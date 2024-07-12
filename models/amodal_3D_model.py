@@ -4,6 +4,7 @@ from typing import Tuple
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
+PARENT_DIR = os.path.dirname(ROOT_DIR)
 sys.path.append(ROOT_DIR)
 
 import ipdb
@@ -14,15 +15,17 @@ import torch.nn.functional as F
 import numpy as np
 from numpy import ndarray
 from torch.nn import init
+from torch.utils.data import DataLoader
 
 from utils.model_util import PointNetLoss, parse_output_to_tensors
 from utils.point_cloud_process import point_cloud_process
 from utils.compute_box3d_iou import compute_box3d_iou, calculate_corner
+from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 
 
 class PointNetEstimation(nn.Module):
-    def __init__(self, n_classes: int = 1):
+    def __init__(self, n_classes: int = 3):
         """Model estimate the 3D bounding box
 
         Parameters
@@ -84,7 +87,7 @@ class PointNetEstimation(nn.Module):
 
 
 class STNxyz(nn.Module):
-    def __init__(self, n_classes: int = 1):
+    def __init__(self, n_classes: int = 3):
         """transformation network
 
         Parameters
@@ -140,9 +143,15 @@ class STNxyz(nn.Module):
         x = self.fc3(x)  # bs,
         return x
 
+# TODO: Transformer is used to get rid onf the outlier points
+
+
+class TransformerBasedFilter():
+    pass
+
 
 class Amodal3DModel(nn.Module):
-    def __init__(self, n_classes: int = 1, n_channel: int = 3):
+    def __init__(self, n_classes: int = 3, n_channel: int = 3):
         """amodal 3D estimation model 
 
         Parameters
@@ -155,11 +164,11 @@ class Amodal3DModel(nn.Module):
         super(Amodal3DModel, self).__init__()
         self.n_classes = n_classes
         self.n_channel = n_channel
-        self.STN = STNxyz(n_classes=1)
-        self.est = PointNetEstimation(n_classes=1)
+        self.STN = STNxyz(n_classes=3)
+        self.est = PointNetEstimation(n_classes=3)
         self.Loss = PointNetLoss()
 
-    def forward(self, features: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
+    def forward(self, features: ndarray, one_hot: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
         """Amodal3DModel forward
 
         Parameters
@@ -167,6 +176,9 @@ class Amodal3DModel(nn.Module):
         features : ndarray
             object point cloud
             size [bs, num_point, 6]
+        one_hot : ndarray
+            pointcloud class
+            size [bs, num_class]
         label_dicts : dict
             labeled result of the 3D bounding box
 
@@ -181,7 +193,7 @@ class Amodal3DModel(nn.Module):
         point_cloud = point_cloud[:, :self.n_channel, :]
 
         bs = point_cloud.shape[0]  # batch size
-        one_hot = torch.tensor(np.ones((bs,1)), dtype = torch.int).cuda()
+        one_hot = torch.tensor(one_hot, dtype=torch.int).cuda()
 
         # object_pts_xyz size (batchsize, number object point, 3)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
@@ -209,28 +221,31 @@ class Amodal3DModel(nn.Module):
         if len(label_dicts) == 0:
             with torch.no_grad():
                 corners = calculate_corner(box3d_center.detach().cpu().numpy(),
-                                            heading_scores.detach().cpu().numpy(),
-                                            heading_residual.detach().cpu().numpy(),
-                                            size_scores.detach().cpu().numpy(),
-                                            size_residual.detach().cpu().numpy())
+                                           heading_scores.detach().cpu().numpy(),
+                                           heading_residual.detach().cpu().numpy(),
+                                           size_scores.detach().cpu().numpy(),
+                                           size_residual.detach().cpu().numpy())
             return corners
 
         else:
-            # If not None, use to Compute Loss
-            one_hot_label = label_dicts.get('one_hot')  # torch.Size([32, 1])
-            box3d_center_label = label_dicts.get('box3d_center')  # torch.Size([32, 3])
-            size_class_label = label_dicts.get('size_class')  # torch.Size([32, 1])
-            size_residual_label = label_dicts.get('size_residual')  # torch.Size([32, 3])
-            heading_class_label = label_dicts.get('angle_class')  # torch.Size([32, 1])
-            heading_residual_label = label_dicts.get('angle_residual')  # torch.Size([32, 1])
+            box3d_center_label = label_dicts.get(
+                'box3d_center')  # torch.Size([32, 3])
+            size_class_label = label_dicts.get(
+                'size_class')  # torch.Size([32, 1])
+            size_residual_label = label_dicts.get(
+                'size_residual')  # torch.Size([32, 3])
+            heading_class_label = label_dicts.get(
+                'angle_class')  # torch.Size([32, 1])
+            heading_residual_label = label_dicts.get(
+                'angle_residual')  # torch.Size([32, 1])
 
             losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
-                            heading_scores, heading_residual_normalized,
-                            heading_residual,
-                            heading_class_label, heading_residual_label,
-                            size_scores, size_residual_normalized,
-                            size_residual,
-                            size_class_label, size_residual_label)
+                               heading_scores, heading_residual_normalized,
+                               heading_residual,
+                               heading_class_label, heading_residual_label,
+                               size_scores, size_residual_normalized,
+                               size_residual,
+                               size_class_label, size_residual_label)
 
             for key in losses.keys():
                 losses[key] = losses[key] / bs
@@ -254,3 +269,32 @@ class Amodal3DModel(nn.Module):
                     'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs
                 }
                 return losses, metrics
+
+
+if __name__ == "__main__":
+    pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
+    label_path = os.path.join(PARENT_DIR, "datasets", "labels")
+
+    is_cuda = torch.cuda.is_available()
+    if is_cuda:
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    model = Amodal3DModel()
+    model.to(device)
+
+    dataset = StereoCustomDataset(pc_path, label_path)
+    train_size = int(0.8 * len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(
+        dataset, [train_size, test_size])
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+    train_features, train_labels, img_dir = next(iter(train_dataloader))
+
+    model = model.train()
+    features = train_features.to(device, dtype=torch.float)
+    data_dicts_var = {key: value.to(device)
+                      for key, value in train_labels.items()}
+    losses, metrics = model(features, data_dicts_var)

@@ -98,7 +98,9 @@ class StereoCustomDataset(Dataset):
         angle_per_class = 2 * np.pi / float(NUM_HEADING_BIN)
         angle_class = np.array([angle // angle_per_class])
         angle_residual = np.array([angle % angle_per_class])
-        one_hot = np.array([1])
+        object_class = g_type2onehotclass[label['name']]
+        one_hot = np.zeros(NUM_SIZE_CLUSTER)
+        one_hot[object_class] = 1
         x = label_dir.split("/")
         x[-2] = "images"
         a = re.findall(r'\d+', x[-1])
@@ -158,3 +160,4 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
     train_features, train_labels, img_dir = next(iter(train_dataloader))
+    print("this is a test")
