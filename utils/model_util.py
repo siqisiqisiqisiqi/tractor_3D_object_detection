@@ -12,6 +12,14 @@ import torch.nn.functional as F
 from src.params import *
 
 
+def angle_thres(angle):
+    while angle < 0:
+        angle = angle + 2 * np.pi
+    while angle > np.pi:
+        angle = angle - np.pi
+    return angle
+
+
 def parse_output_to_tensors(box_pred):
     '''
     :param box_pred: (bs,59)
@@ -51,8 +59,8 @@ def parse_output_to_tensors(box_pred):
         size_residual_normalized.view(bs, NUM_SIZE_CLUSTER, 3)  # [32,8,3]
     size_residual = size_residual_normalized * \
         torch.from_numpy(g_mean_size_arr).unsqueeze(0).repeat(bs, 1, 1).cuda()
-    return center_boxnet,\
-        heading_scores, heading_residual_normalized, heading_residual,\
+    return center_boxnet, \
+        heading_scores, heading_residual_normalized, heading_residual, \
         size_scores, size_residual_normalized, size_residual
 
 
@@ -200,7 +208,7 @@ class PointNetLoss(nn.Module):
         # 32,8,3
         scls_onehot_repeat = scls_onehot.view(-1,
                                               NUM_SIZE_CLUSTER, 1).repeat(1, 1, 3)
-        #TODO check multi dimension analysis
+        # TODO check multi dimension analysis
         predicted_size_residual_normalized_dist = torch.sum(
             size_residual_normalized * scls_onehot_repeat.cuda(), dim=1)  # 32,3
         mean_size_arr_expand = torch.from_numpy(g_mean_size_arr).float().cuda() \
@@ -215,7 +223,7 @@ class PointNetLoss(nn.Module):
         size_residual_normalized_loss = huber_loss(
             size_normalized_dist, delta=1.0)
 
-        #TODO check if the box corner calculation is right.
+        # TODO check if the box corner calculation is right.
         # Corner Loss
         corners_3d = get_box3d_corners(center,
                                        heading_residual, size_residual).cuda()  # (bs,NH,NS,8,3)(32, 12, 8, 8, 3)
@@ -240,7 +248,7 @@ class PointNetLoss(nn.Module):
         size_label = torch.sum(
             scls_onehot.view(bs, NUM_SIZE_CLUSTER, 1).float() * size_label, axis=[1])  # (B,3)
 
-        #TODO check the box 3d corner calculation
+        # TODO check the box 3d corner calculation
         corners_3d_gt = get_box3d_corners_helper(
             center_label, heading_label, size_label)  # (B,8,3)
         corners_3d_gt_flip = get_box3d_corners_helper(
@@ -269,4 +277,3 @@ class PointNetLoss(nn.Module):
             'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
         }
         return losses
-

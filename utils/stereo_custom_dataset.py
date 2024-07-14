@@ -19,7 +19,7 @@ from numpy.linalg import norm
 from torch.utils.data import DataLoader
 
 from src.params import *
-
+from utils.model_util import angle_thres
 
 pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
 label_path = os.path.join(PARENT_DIR, "datasets", "labels")
@@ -87,15 +87,16 @@ class StereoCustomDataset(Dataset):
             img_dir: img directory correspond to the pointcloud
         """
         center = label['centroid']
-        box3d_center = np.array([center['x'], center['y'], center['z']]) * 100
+        box3d_center = np.array([center['x'], center['y'], center['z']])
         size_class = np.array([g_type2onehotclass[label['name']]])
         standard_size = g_type_mean_size[label['name']]
         size = label['dimensions']
         box_size = np.array(
-            [size['length'], size['width'], size['height']]) * 100
+            [size['length'], size['width'], size['height']])
         size_residual = standard_size - box_size
         angle = label['rotations']['z']
         angle_per_class = 2 * np.pi / float(NUM_HEADING_BIN)
+        angle = angle_thres(angle)
         angle_class = np.array([angle // angle_per_class])
         angle_residual = np.array([angle % angle_per_class])
         object_class = g_type2onehotclass[label['name']]
@@ -132,19 +133,27 @@ class StereoCustomDataset(Dataset):
         centroid_point = np.sum(pc_in_numpy, 0) / len(pc_in_numpy)
         pc_name = self.pc_list[index].split("/")[-1].split("_")
         label_dir = f"{label_path}/{pc_name[0]}.json"
-
+        pc_class = pc_name[4].split(".")[0]
         with open(label_dir) as f:
             d = json.load(f)
 
         object_num = len(d['objects'])
         distance = []
+        min_dist = 1e4
+        min_idx = 0
         for i in range(object_num):
             center = d['objects'][i]['centroid']
             label_center = np.array([center['x'], center['y'], center['z']])
-            distance.append(norm(label_center - centroid_point, 2))
-        idx = np.argmin(distance)
-        label = d['objects'][idx]
-        pc_in_numpy = pc_in_numpy * 100
+            label_class = d['objects'][i]['name']
+            if label_class == pc_class:
+                distance = norm(label_center - centroid_point, 2)
+                if distance < min_dist:
+                    min_dist = distance
+                    min_idx = i
+        if min_dist == 1e4:
+            print("Can't find labels!!!!!!!")
+        label = d['objects'][min_idx]
+        pc_in_numpy = pc_in_numpy
         if self.DS:
             pc_in_numpy = self.downsample(pc_in_numpy, NUM_OBJECT_POINT)
         label2, img_dir = self.convertlabelformat(label, label_dir)
@@ -152,6 +161,7 @@ class StereoCustomDataset(Dataset):
 
 
 if __name__ == "__main__":
+    BATCH_SIZE = 8
     dataset = StereoCustomDataset(pc_path, label_path)
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size

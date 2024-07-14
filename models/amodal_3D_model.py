@@ -137,7 +137,7 @@ class STNxyz(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))  # bs,256,n
         x = torch.max(x, 2)[0]  # bs,256
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
-        x = torch.cat([x, expand_one_hot_vec], 1)  # bs,259
+        x = torch.cat([x, expand_one_hot_vec], 1)
         x = F.relu(self.fcbn1(self.fc1(x)))  # bs,256
         x = F.relu(self.fcbn2(self.fc2(x)))  # bs,128
         x = self.fc3(x)  # bs,
@@ -168,7 +168,7 @@ class Amodal3DModel(nn.Module):
         self.est = PointNetEstimation(n_classes=3)
         self.Loss = PointNetLoss()
 
-    def forward(self, features: ndarray, one_hot: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
+    def forward(self, features: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
         """Amodal3DModel forward
 
         Parameters
@@ -176,9 +176,6 @@ class Amodal3DModel(nn.Module):
         features : ndarray
             object point cloud
             size [bs, num_point, 6]
-        one_hot : ndarray
-            pointcloud class
-            size [bs, num_class]
         label_dicts : dict
             labeled result of the 3D bounding box
 
@@ -193,7 +190,7 @@ class Amodal3DModel(nn.Module):
         point_cloud = point_cloud[:, :self.n_channel, :]
 
         bs = point_cloud.shape[0]  # batch size
-        one_hot = torch.tensor(one_hot, dtype=torch.int).cuda()
+        one_hot = label_dicts.get('one_hot').to(torch.float)
 
         # object_pts_xyz size (batchsize, number object point, 3)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
@@ -238,7 +235,7 @@ class Amodal3DModel(nn.Module):
                 'angle_class')  # torch.Size([32, 1])
             heading_residual_label = label_dicts.get(
                 'angle_residual')  # torch.Size([32, 1])
-
+            # shape = heading_class_label.shape[0]
             losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
                                heading_scores, heading_residual_normalized,
                                heading_residual,
@@ -294,7 +291,8 @@ if __name__ == "__main__":
     train_features, train_labels, img_dir = next(iter(train_dataloader))
 
     model = model.train()
-    features = train_features.to(device, dtype=torch.float)
+    features = train_features.to(device, dtype=torch.float32)
     data_dicts_var = {key: value.to(device)
                       for key, value in train_labels.items()}
     losses, metrics = model(features, data_dicts_var)
+    print("This is a test!")
