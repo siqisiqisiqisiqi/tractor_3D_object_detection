@@ -50,7 +50,6 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
         'total_loss': 0.0,
         'center_loss': 0.0,
         'heading_class_loss': 0.0,
-        'size_class_loss': 0.0,
         'heading_residual_normalized_loss': 0.0,
         'size_residual_normalized_loss': 0.0,
         'stage1_center_loss': 0.0,
@@ -69,11 +68,12 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
 
         data_dicts_var = {key: value.cuda()
                           for key, value in label_dicts.items()}
+        one_hot = data_dicts_var.get('one_hot').to(torch.float)
         features = features.to(device, dtype=torch.float)
         model = model.eval()
 
         with torch.no_grad():
-            losses, metrics = model(features, data_dicts_var)
+            losses, metrics = model(features, one_hot, data_dicts_var)
 
         for key in test_losses.keys():
             if key in losses.keys():
@@ -133,7 +133,7 @@ def train():
         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
     strtime = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
-    strtime = strtime[4:8]
+    strtime = strtime[4:13]
 
     result_path = f"{save_path}/{strtime}"
     isExist = os.path.exists(result_path)
@@ -160,7 +160,6 @@ def train():
             'total_loss': 0.0,
             'center_loss': 0.0,
             'heading_class_loss': 0.0,
-            'size_class_loss': 0.0,
             'heading_residual_normalized_loss': 0.0,
             'size_residual_normalized_loss': 0.0,
             'stage1_center_loss': 0.0,
@@ -179,8 +178,10 @@ def train():
                               for key, value in label_dicts.items()}
             optimizer.zero_grad()
             model = model.train()
+
             features = features.to(device, dtype=torch.float)
-            losses, metrics = model(features, data_dicts_var)
+            one_hot = data_dicts_var.get('one_hot').to(torch.float)
+            losses, metrics = model(features, one_hot, data_dicts_var)
             total_loss = losses['total_loss']
             total_loss.backward()
             optimizer.step()

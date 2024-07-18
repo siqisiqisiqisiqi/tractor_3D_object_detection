@@ -48,7 +48,7 @@ class PointNetEstimation(nn.Module):
         self.fc1 = nn.Linear(512 + n_classes, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 3 + NUM_HEADING_BIN *
-                             2 + NUM_SIZE_CLUSTER * 4)
+                             2 + NUM_SIZE_CLUSTER * 3)
         self.fcbn1 = nn.BatchNorm1d(512)
         self.fcbn2 = nn.BatchNorm1d(256)
 
@@ -168,7 +168,7 @@ class Amodal3DModel(nn.Module):
         self.est = PointNetEstimation(n_classes=3)
         self.Loss = PointNetLoss()
 
-    def forward(self, features: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
+    def forward(self, features: ndarray, one_hot: ndarray, label_dicts: dict = {}) -> Tuple[dict, dict]:
         """Amodal3DModel forward
 
         Parameters
@@ -190,7 +190,8 @@ class Amodal3DModel(nn.Module):
         point_cloud = point_cloud[:, :self.n_channel, :]
 
         bs = point_cloud.shape[0]  # batch size
-        one_hot = label_dicts.get('one_hot').to(torch.float)
+        # one_hot = label_dicts.get('one_hot').to(torch.float)
+        one_hot = one_hot.to(torch.float)
 
         # object_pts_xyz size (batchsize, number object point, 3)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
@@ -210,7 +211,7 @@ class Amodal3DModel(nn.Module):
         box_pred = self.est(object_pts_xyz_new, one_hot)
         center_boxnet, \
             heading_scores, heading_residual_normalized, heading_residual, \
-            size_scores, size_residual_normalized, size_residual = \
+            size_residual_normalized, size_residual = \
             parse_output_to_tensors(box_pred)
 
         box3d_center = center_boxnet + stage1_center  # bs,3
@@ -220,7 +221,7 @@ class Amodal3DModel(nn.Module):
                 corners = calculate_corner(box3d_center.detach().cpu().numpy(),
                                            heading_scores.detach().cpu().numpy(),
                                            heading_residual.detach().cpu().numpy(),
-                                           size_scores.detach().cpu().numpy(),
+                                           one_hot.detach().cpu().numpy(),
                                            size_residual.detach().cpu().numpy())
             return corners
 
@@ -240,7 +241,7 @@ class Amodal3DModel(nn.Module):
                                heading_scores, heading_residual_normalized,
                                heading_residual,
                                heading_class_label, heading_residual_label,
-                               size_scores, size_residual_normalized,
+                               size_residual_normalized,
                                size_residual,
                                size_class_label, size_residual_label)
 
@@ -252,7 +253,7 @@ class Amodal3DModel(nn.Module):
                         box3d_center.detach().cpu().numpy(),
                         heading_scores.detach().cpu().numpy(),
                         heading_residual.detach().cpu().numpy(),
-                        size_scores.detach().cpu().numpy(),
+                        one_hot.detach().cpu().numpy(),
                         size_residual.detach().cpu().numpy(),
                         box3d_center_label.detach().cpu().numpy(),
                         heading_class_label.detach().cpu().numpy().squeeze(),
@@ -294,5 +295,6 @@ if __name__ == "__main__":
     features = train_features.to(device, dtype=torch.float32)
     data_dicts_var = {key: value.to(device)
                       for key, value in train_labels.items()}
-    losses, metrics = model(features, data_dicts_var)
+    one_hot = data_dicts_var.get('one_hot')
+    losses, metrics = model(features, one_hot, data_dicts_var)
     print("This is a test!")

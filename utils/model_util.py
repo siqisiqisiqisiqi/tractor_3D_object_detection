@@ -46,12 +46,12 @@ def parse_output_to_tensors(box_pred):
     heading_residual_normalized = \
         box_pred[:, c:c + NUM_HEADING_BIN]  # 3+12 : 3+2*12
     heading_residual = \
-        heading_residual_normalized * (np.pi / NUM_HEADING_BIN)
+        heading_residual_normalized * (2 * np.pi / NUM_HEADING_BIN)
     c += NUM_HEADING_BIN
 
     # size
-    size_scores = box_pred[:, c:c + NUM_SIZE_CLUSTER]  # 3+2*12 : 3+2*12+8
-    c += NUM_SIZE_CLUSTER
+    # size_scores = box_pred[:, c:c + NUM_SIZE_CLUSTER]  # 3+2*12 : 3+2*12+8
+    # c += NUM_SIZE_CLUSTER
     size_residual_normalized = \
         box_pred[:, c:c + 3 *
                  NUM_SIZE_CLUSTER].contiguous()  # [32,24] 3+2*12+8 : 3+2*12+4*8
@@ -61,7 +61,7 @@ def parse_output_to_tensors(box_pred):
         torch.from_numpy(g_mean_size_arr).unsqueeze(0).repeat(bs, 1, 1).cuda()
     return center_boxnet, \
         heading_scores, heading_residual_normalized, heading_residual, \
-        size_scores, size_residual_normalized, size_residual
+        size_residual_normalized, size_residual
 
 
 def huber_loss(error, delta=1.0):  # (32,), ()
@@ -148,9 +148,9 @@ class PointNetLoss(nn.Module):
     def forward(self, center, center_label, stage1_center,
                 heading_scores, heading_residual_normalized, heading_residual,
                 heading_class_label, heading_residual_label,
-                size_scores, size_residual_normalized, size_residual,
+                size_residual_normalized, size_residual,
                 size_class_label, size_residual_label,
-                corner_loss_weight=10.0, box_loss_weight=1.0):
+                corner_loss_weight=10.0, box_loss_weight=10):
         '''
         1.InsSeg
         logits: torch.Size([32, 1024, 2]) torch.float32
@@ -199,9 +199,9 @@ class PointNetLoss(nn.Module):
         heading_residual_normalized_loss = \
             huber_loss(heading_residual_normalized_dist -
                        heading_residual_normalized_label, delta=1.0)  # fix,2020.1.14
-        # Size loss
-        size_class_loss = F.nll_loss(F.log_softmax(size_scores, dim=1),
-                                     size_class_label.squeeze().long())  # tensor(2.0240, grad_fn=<NllLossBackward>)
+        # # Size loss
+        # size_class_loss = F.nll_loss(F.log_softmax(size_scores, dim=1),
+        #                              size_class_label.squeeze().long())  # tensor(2.0240, grad_fn=<NllLossBackward>)
 
         scls_onehot = torch.eye(NUM_SIZE_CLUSTER).cuda()[
             size_class_label.squeeze().long()]  # 32,8
@@ -259,21 +259,26 @@ class PointNetLoss(nn.Module):
         corners_loss = huber_loss(corners_dist, delta=1.0)
 
         # Weighted sum of all losses
+        # total_loss = box_loss_weight * (center_loss +
+        #                                 heading_class_loss*0.1 + size_class_loss +
+        #                                 heading_residual_normalized_loss * 20 +
+        #                                 size_residual_normalized_loss * 20 +
+        #                                 stage1_center_loss +
+        #                                 corner_loss_weight * corners_loss)
         total_loss = box_loss_weight * (center_loss +
-                                        heading_class_loss + size_class_loss +
-                                        heading_residual_normalized_loss * 20 +
-                                        size_residual_normalized_loss * 20 +
+                                        heading_class_loss * 0.1 +
+                                        heading_residual_normalized_loss +
+                                        size_residual_normalized_loss +
                                         stage1_center_loss +
                                         corner_loss_weight * corners_loss)
 
         losses = {
             'total_loss': total_loss,
             'center_loss': box_loss_weight * center_loss,
-            'heading_class_loss': box_loss_weight * heading_class_loss,
-            'size_class_loss': box_loss_weight * size_class_loss,
-            'heading_residual_normalized_loss': box_loss_weight * heading_residual_normalized_loss * 20,
-            'size_residual_normalized_loss': box_loss_weight * size_residual_normalized_loss * 20,
-            'stage1_center_loss': box_loss_weight * size_residual_normalized_loss * 20,
+            'heading_class_loss': box_loss_weight * heading_class_loss * 0.1,
+            'heading_residual_normalized_loss': box_loss_weight * heading_residual_normalized_loss,
+            'size_residual_normalized_loss': box_loss_weight * size_residual_normalized_loss,
+            'stage1_center_loss': box_loss_weight * size_residual_normalized_loss,
             'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
         }
         return losses

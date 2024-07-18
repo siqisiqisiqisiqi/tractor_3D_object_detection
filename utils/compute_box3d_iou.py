@@ -84,7 +84,6 @@ def calculate_corner(center_pred, heading_logits, heading_residual,
         # calculate the 3D orientation and size
         heading_angle = class2angle(heading_class[i],
                                     heading_residual[i], NUM_HEADING_BIN)
-        # heading_angle = 0
         box_size = class2size(size_class[i], size_residual[i])
         # calculate the box corner coordinates
         corners_3d = get_3d_box(box_size, heading_angle, center_pred[i])
