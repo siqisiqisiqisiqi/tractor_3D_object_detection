@@ -20,7 +20,7 @@ def angle_thres(angle):
     return angle
 
 
-def parse_output_to_tensors(box_pred):
+def parse_output_to_tensors(box_pred, one_hot):
     '''
     :param box_pred: (bs,59)
     :param logits: (bs,1024,2)
@@ -49,14 +49,10 @@ def parse_output_to_tensors(box_pred):
         heading_residual_normalized * (2 * np.pi / NUM_HEADING_BIN)
     c += NUM_HEADING_BIN
 
-    # size
-    # size_scores = box_pred[:, c:c + NUM_SIZE_CLUSTER]  # 3+2*12 : 3+2*12+8
-    # c += NUM_SIZE_CLUSTER
-    size_residual_normalized = \
-        box_pred[:, c:c + 3 *
-                 NUM_SIZE_CLUSTER].contiguous()  # [32,24] 3+2*12+8 : 3+2*12+4*8
-    size_residual_normalized = \
-        size_residual_normalized.view(bs, NUM_SIZE_CLUSTER, 3)  # [32,8,3]
+    size_residual_normalized = box_pred[:, c:c + 3 * 1].contiguous()  # [32,24] 3+2*12+8 : 3+2*12+4*8
+    size_residual_normalized = size_residual_normalized.view(bs, 1, 3)  # [32,8,3]
+    one_hot_array = one_hot.unsqueeze(2).repeat(1,1,3)
+    size_residual_normalized = size_residual_normalized*one_hot_array
     size_residual = size_residual_normalized * \
         torch.from_numpy(g_mean_size_arr).unsqueeze(0).repeat(bs, 1, 1).cuda()
     return center_boxnet, \
@@ -208,7 +204,7 @@ class PointNetLoss(nn.Module):
         # 32,8,3
         scls_onehot_repeat = scls_onehot.view(-1,
                                               NUM_SIZE_CLUSTER, 1).repeat(1, 1, 3)
-        # TODO check multi dimension analysis
+
         predicted_size_residual_normalized_dist = torch.sum(
             size_residual_normalized * scls_onehot_repeat.cuda(), dim=1)  # 32,3
         mean_size_arr_expand = torch.from_numpy(g_mean_size_arr).float().cuda() \
@@ -223,7 +219,6 @@ class PointNetLoss(nn.Module):
         size_residual_normalized_loss = huber_loss(
             size_normalized_dist, delta=1.0)
 
-        # TODO check if the box corner calculation is right.
         # Corner Loss
         corners_3d = get_box3d_corners(center,
                                        heading_residual, size_residual).cuda()  # (bs,NH,NS,8,3)(32, 12, 8, 8, 3)
@@ -265,12 +260,20 @@ class PointNetLoss(nn.Module):
         #                                 size_residual_normalized_loss * 20 +
         #                                 stage1_center_loss +
         #                                 corner_loss_weight * corners_loss)
+
         total_loss = box_loss_weight * (center_loss +
                                         heading_class_loss * 0.1 +
                                         heading_residual_normalized_loss +
                                         size_residual_normalized_loss +
                                         stage1_center_loss +
                                         corner_loss_weight * corners_loss)
+
+        # total_loss = box_loss_weight * (center_loss +
+        #                                 heading_class_loss * 0 +
+        #                                 heading_residual_normalized_loss * 0 +
+        #                                 size_residual_normalized_loss +
+        #                                 stage1_center_loss +
+        #                                 corner_loss_weight * corners_loss)
 
         losses = {
             'total_loss': total_loss,

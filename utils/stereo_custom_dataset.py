@@ -21,8 +21,10 @@ from torch.utils.data import DataLoader
 from src.params import *
 from utils.model_util import angle_thres
 
-pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
-label_path = os.path.join(PARENT_DIR, "datasets", "labels")
+pc_train_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+label_train_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
+pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
+label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
 
 
 class StereoCustomDataset(Dataset):
@@ -132,7 +134,7 @@ class StereoCustomDataset(Dataset):
         pc_in_numpy = np.asarray(pcd.points)
         centroid_point = np.sum(pc_in_numpy, 0) / len(pc_in_numpy)
         pc_name = self.pc_list[index].split("/")[-1].split("_")
-        label_dir = f"{label_path}/{pc_name[0]}.json"
+        label_dir = f"{self.label_path}/{pc_name[0]}.json"
         pc_class = pc_name[4].split(".")[0]
         with open(label_dir) as f:
             d = json.load(f)
@@ -162,12 +164,15 @@ class StereoCustomDataset(Dataset):
 
 if __name__ == "__main__":
     BATCH_SIZE = 8
-    dataset = StereoCustomDataset(pc_path, label_path)
-    train_size = int(0.8 * len(dataset))
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(
-        dataset, [train_size, test_size])
+    train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
     train_dataloader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
-    train_features, train_labels, img_dir = next(iter(train_dataloader))
-    print("this is a test")
+
+    test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+
+    for batch, (train_features, train_labels, _) in enumerate(train_dataloader):
+        # print(train_features.shape)
+        pass
+        # break

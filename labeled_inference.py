@@ -46,7 +46,7 @@ def downsample(pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
 def point_cloud_input(image_path):
     a = image_path.split("/")[-1]
     num = re.findall(r'\d+', a)
-    label_dir = f'../datasets/labels/Pointcloud{num[0]}.json'
+    label_dir = f'../datasets/labels/test/Pointcloud{num[0]}.json'
     with open(label_dir) as f:
         d = json.load(f)
     label_dicts = d['objects']
@@ -137,10 +137,11 @@ def main():
     # for i in range(115):
     #     image_path = f"{PARENT_DIR}/datasets/images/Image_{i}.jpg"
     #     image_path_list.append(image_path)
-    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/Image_*.jpg")
+    image_path_list = glob.glob(
+        f"{PARENT_DIR}/datasets/images/test/Image_*.jpg")
     for data in image_path_list:
         img_path = data
-        label_dicts = point_cloud_input(img_path)        
+        label_dicts = point_cloud_input(img_path)
         corners = label2corners(label_dicts)
         k = visaulization(img_path, corners)
         if k == ord("q"):

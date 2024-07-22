@@ -144,18 +144,19 @@ def main():
 
     model = Amodal3DModel()
     model.to(device)
-    result_path = f"{save_path}/0714/0714_epoch45.pth"
+    # result_path = f"{save_path}/0714/0714_epoch45.pth"
+    result_path = f"{save_path}/0721-1526/0721-1526_epoch45.pth"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
-    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/Image_24*")
+    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/train/Image_*")
     for data in image_path_list:
         img_path = data
         a = data.split("/")[-1]
         num = re.findall(r'\d+', a)
-        point_cloud_path = f"{PARENT_DIR}/datasets/pointclouds_backup/Pointcloud{num[0]}_*"
+        point_cloud_path = f"{PARENT_DIR}/datasets/pointclouds/train/Pointcloud{num[0]}_*"
         point_cloud_path_list = glob.glob(point_cloud_path)
         categ = point_cloud_class(point_cloud_path_list)
         features = point_cloud_input(point_cloud_path_list)

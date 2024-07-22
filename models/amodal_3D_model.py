@@ -38,6 +38,10 @@ class PointNetEstimation(nn.Module):
         self.conv2 = nn.Conv1d(128, 128, 1)
         self.conv3 = nn.Conv1d(128, 256, 1)
         self.conv4 = nn.Conv1d(256, 512, 1)
+        self.dropout1 = nn.Dropout(0.2)
+        self.dropout2 = nn.Dropout(0.2)
+        self.dropout3 = nn.Dropout(0.2)
+        self.dropout4 = nn.Dropout(0.2)
         self.bn1 = nn.BatchNorm1d(128)
         self.bn2 = nn.BatchNorm1d(128)
         self.bn3 = nn.BatchNorm1d(256)
@@ -48,9 +52,10 @@ class PointNetEstimation(nn.Module):
         self.fc1 = nn.Linear(512 + n_classes, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 3 + NUM_HEADING_BIN *
-                             2 + NUM_SIZE_CLUSTER * 3)
+                             2 + 1 * 3)
         self.fcbn1 = nn.BatchNorm1d(512)
         self.fcbn2 = nn.BatchNorm1d(256)
+        self.dropout12 = nn.Dropout(0.2)
 
     def forward(self, pts: ndarray, one_hot_vec: ndarray) -> tensor:
         """
@@ -71,17 +76,17 @@ class PointNetEstimation(nn.Module):
         bs = pts.size()[0]
         n_pts = pts.size()[2]
 
-        out1 = F.relu(self.bn1(self.conv1(pts)))  # bs,128,n
-        out2 = F.relu(self.bn2(self.conv2(out1)))  # bs,128,n
-        out3 = F.relu(self.bn3(self.conv3(out2)))  # bs,256,n
-        out4 = F.relu(self.bn4(self.conv4(out3)))  # bs,512,n
+        out1 = self.dropout1(F.relu(self.bn1(self.conv1(pts))))  # bs,128,n
+        out2 = self.dropout2(F.relu(self.bn2(self.conv2(out1))))  # bs,128,n
+        out3 = self.dropout3(F.relu(self.bn3(self.conv3(out2))))  # bs,256,n
+        out4 = self.dropout4(F.relu(self.bn4(self.conv4(out3))))  # bs,512,n
         global_feat = torch.max(out4, 2, keepdim=False)[0]  # bs,512
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         expand_global_feat = torch.cat(
             [global_feat, expand_one_hot_vec], 1)  # bs,515
         x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
-        x = F.relu(self.fcbn2(self.fc2(x)))  # bs,256
+        x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
         box_pred = self.fc3(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
         return box_pred
 
@@ -212,7 +217,7 @@ class Amodal3DModel(nn.Module):
         center_boxnet, \
             heading_scores, heading_residual_normalized, heading_residual, \
             size_residual_normalized, size_residual = \
-            parse_output_to_tensors(box_pred)
+            parse_output_to_tensors(box_pred, one_hot)
 
         box3d_center = center_boxnet + stage1_center  # bs,3
 

@@ -19,8 +19,15 @@ from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 
-pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
-label_path = os.path.join(PARENT_DIR, "datasets", "labels")
+pc_train_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+label_train_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
+
+pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
+label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
+
+# pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+# label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
+
 save_path = os.path.join(ROOT_DIR, "results")
 
 # select the device
@@ -121,11 +128,8 @@ def train():
     random.seed(SEED)
     torch.backends.cudnn.deterministic = True
 
-    dataset = StereoCustomDataset(pc_path, label_path)
-    train_size = int(0.8 * len(dataset))
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(
-        dataset, [train_size, test_size])
+    train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
+    test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
 
     train_dataloader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)

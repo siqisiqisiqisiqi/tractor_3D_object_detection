@@ -3,7 +3,7 @@ import numpy as np
 
 ############################################################################
 BASE_LR = 0.001
-WEIGHT_DECAY = 0.0000
+WEIGHT_DECAY = 0.0001
 LR_STEPS = 10
 GAMMA = 0.3
 BATCH_SIZE = 8
