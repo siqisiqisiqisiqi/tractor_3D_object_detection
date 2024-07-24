@@ -1,12 +1,26 @@
-import numpy as np
+def combine_dicts_to_list(dict1, dict2):
+    combined_dict = {}
 
-# mtx = np.load('./camera_params/intri_param.npy')
-# mat = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
-# tvecs = np.array([[0], [0], [-1.01]])
+    for key in sorted(set(dict1) | set(dict2)):  # Union of keys from both dictionaries
+        combined_dict[key] = []
+        print(key)
+        if key in dict1:
+            if isinstance(dict1[key], list):
+                combined_dict[key].extend(dict1[key])
+            else:
+                combined_dict[key].append(dict1[key])
+        if key in dict2:
+            if isinstance(dict2[key], list):
+                combined_dict[key].extend(dict2[key])
+            else:
+                combined_dict[key].append(dict2[key])
+
+    return combined_dict
 
 
-# np.savez('./camera_params/camera_param.npz', mtx=mtx, Mat=mat, tvecs=tvecs)
+# Example usage
+dict1 = {'a': [1], 'b': 2, 'c': 3}
+dict2 = {'a': [4], 'b': 5, 'd': 6}
 
-
-i = list(range(115))
-print(i)
+combined_dict = combine_dicts_to_list(dict1, dict2)
+print(combined_dict)

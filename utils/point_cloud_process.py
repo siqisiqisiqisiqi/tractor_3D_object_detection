@@ -2,7 +2,8 @@ from typing import Tuple
 import numpy as np
 from numpy import ndarray
 
-def point_cloud_process(point_cloud: ndarray)-> Tuple[ndarray, ndarray]:
+
+def point_cloud_process(point_cloud: ndarray) -> Tuple[ndarray, ndarray]:
     """point cloud coordinate transform and center calculation
 
     Parameters

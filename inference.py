@@ -15,7 +15,8 @@ import glob
 import cv2
 from numpy.linalg import inv
 
-from models.amodal_3D_model import Amodal3DModel
+from models.amodal_3D_model_iou_angle import Amodal3DModel
+# from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 
@@ -145,13 +146,13 @@ def main():
     model = Amodal3DModel()
     model.to(device)
     # result_path = f"{save_path}/0714/0714_epoch45.pth"
-    result_path = f"{save_path}/0721-1526/0721-1526_epoch45.pth"
+    result_path = f"{save_path}/0723-1816/0723-1816_epoch200.pth"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
-    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/train/Image_*")
+    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/test/Image_*")
     for data in image_path_list:
         img_path = data
         a = data.split("/")[-1]

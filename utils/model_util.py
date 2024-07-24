@@ -46,13 +46,15 @@ def parse_output_to_tensors(box_pred, one_hot):
     heading_residual_normalized = \
         box_pred[:, c:c + NUM_HEADING_BIN]  # 3+12 : 3+2*12
     heading_residual = \
-        heading_residual_normalized * (2 * np.pi / NUM_HEADING_BIN)
+        heading_residual_normalized * (np.pi / NUM_HEADING_BIN)
     c += NUM_HEADING_BIN
 
-    size_residual_normalized = box_pred[:, c:c + 3 * 1].contiguous()  # [32,24] 3+2*12+8 : 3+2*12+4*8
-    size_residual_normalized = size_residual_normalized.view(bs, 1, 3)  # [32,8,3]
-    one_hot_array = one_hot.unsqueeze(2).repeat(1,1,3)
-    size_residual_normalized = size_residual_normalized*one_hot_array
+    # [32,24] 3+2*12+8 : 3+2*12+4*8
+    size_residual_normalized = box_pred[:, c:c + 3 * 1].contiguous()
+    size_residual_normalized = size_residual_normalized.view(
+        bs, 1, 3)  # [32,8,3]
+    one_hot_array = one_hot.unsqueeze(2).repeat(1, 1, 3)
+    size_residual_normalized = size_residual_normalized * one_hot_array
     size_residual = size_residual_normalized * \
         torch.from_numpy(g_mean_size_arr).unsqueeze(0).repeat(bs, 1, 1).cuda()
     return center_boxnet, \
@@ -78,9 +80,9 @@ def get_box3d_corners_helper(centers, headings, sizes):
     # print l,w,h
     x_corners = torch.cat([l / 2, l / 2, -l / 2, -l / 2,
                           l / 2, l / 2, -l / 2, -l / 2], dim=1)  # (N,8)
-    y_corners = torch.cat(
+    z_corners = torch.cat(
         [h / 2, h / 2, h / 2, h / 2, -h / 2, -h / 2, -h / 2, -h / 2], dim=1)  # (N,8)
-    z_corners = torch.cat([w / 2, -w / 2, -w / 2, w / 2,
+    y_corners = torch.cat([w / 2, -w / 2, -w / 2, w / 2,
                           w / 2, -w / 2, -w / 2, w / 2], dim=1)  # (N,8)
     corners = torch.cat([x_corners.view(N, 1, 8), y_corners.view(N, 1, 8),
                          z_corners.view(N, 1, 8)], dim=1)  # (N,3,8)
@@ -89,9 +91,9 @@ def get_box3d_corners_helper(centers, headings, sizes):
     s = torch.sin(headings).cuda()
     ones = torch.ones([N], dtype=torch.float32).cuda()
     zeros = torch.zeros([N], dtype=torch.float32).cuda()
-    row1 = torch.stack([c, zeros, s], dim=1)  # (N,3)
-    row2 = torch.stack([zeros, ones, zeros], dim=1)
-    row3 = torch.stack([-s, zeros, c], dim=1)
+    row1 = torch.stack([c, -s, zeros], dim=1)  # (N,3)
+    row2 = torch.stack([s, c, zeros], dim=1)
+    row3 = torch.stack([zeros, zeros, ones], dim=1)
     R = torch.cat([row1.view(N, 1, 3), row2.view(N, 1, 3),
                    row3.view(N, 1, 3)], axis=1)  # (N,3,3)
     # print row1, row2, row3, R, N
@@ -112,7 +114,7 @@ def get_box3d_corners(center, heading_residual, size_residual):
     """
     bs = center.shape[0]
     heading_bin_centers = torch.from_numpy(
-        np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float()  # (12,) (NH,)
+        np.arange(0, np.pi, np.pi / NUM_HEADING_BIN)).float()  # (12,) (NH,)
     headings = heading_residual + \
         heading_bin_centers.view(1, -1).cuda()  # (bs,12)
 
@@ -230,7 +232,7 @@ class PointNetLoss(nn.Module):
             .float() * corners_3d,
             dim=[1, 2])  # (bs,8,3)
         heading_bin_centers = torch.from_numpy(
-            np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float().cuda()  # (NH,)
+            np.arange(0, np.pi, np.pi / NUM_HEADING_BIN)).float().cuda()  # (NH,)
         heading_label = heading_residual_label.view(bs, 1) + \
             heading_bin_centers.view(
                 1, NUM_HEADING_BIN)  # (bs,1)+(1,NH)=(bs,NH)
@@ -267,13 +269,6 @@ class PointNetLoss(nn.Module):
                                         size_residual_normalized_loss +
                                         stage1_center_loss +
                                         corner_loss_weight * corners_loss)
-
-        # total_loss = box_loss_weight * (center_loss +
-        #                                 heading_class_loss * 0 +
-        #                                 heading_residual_normalized_loss * 0 +
-        #                                 size_residual_normalized_loss +
-        #                                 stage1_center_loss +
-        #                                 corner_loss_weight * corners_loss)
 
         losses = {
             'total_loss': total_loss,

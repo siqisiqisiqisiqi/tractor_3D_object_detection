@@ -2,12 +2,13 @@ import numpy as np
 
 
 ############################################################################
-BASE_LR = 0.001
+BASE_LR = 0.0002
+# BASE_LR = 0.001
 WEIGHT_DECAY = 0.0001
 LR_STEPS = 10
 GAMMA = 0.3
 BATCH_SIZE = 8
-MAX_EPOCH = 51
+MAX_EPOCH = 50
 MIN_LR = 1e-5
 
 ############################################################################
@@ -25,3 +26,7 @@ g_type_mean_size = {'road cone': np.array([0.25, 0.25, 0.4]),
 g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3))  # size clustrs
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i, :] = g_type_mean_size[g_class2type[i]]
+
+################################################################################
+PC_MAX = [20, 19, 8]
+PC_MIN = [1, -20, -1.5]

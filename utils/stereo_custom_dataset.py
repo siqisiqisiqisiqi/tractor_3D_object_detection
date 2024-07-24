@@ -28,7 +28,7 @@ label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
 
 
 class StereoCustomDataset(Dataset):
-    def __init__(self, pc_path: str, label_path: str, downsample=True):
+    def __init__(self, pc_path: str, label_path: str, downsample=True, normalization=True):
         """custom dataset
 
         Parameters
@@ -45,7 +45,7 @@ class StereoCustomDataset(Dataset):
         self.pc_path = pc_path
         self.label_path = label_path
         self.DS = downsample
-
+        self.NORMAL = normalization
         self.pc_list = glob(f"{pc_path}/*.ply")
 
     def downsample(self, pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
@@ -97,8 +97,8 @@ class StereoCustomDataset(Dataset):
             [size['length'], size['width'], size['height']])
         size_residual = standard_size - box_size
         angle = label['rotations']['z']
-        angle_per_class = 2 * np.pi / float(NUM_HEADING_BIN)
         angle = angle_thres(angle)
+        angle_per_class = np.pi / float(NUM_HEADING_BIN)
         angle_class = np.array([angle // angle_per_class])
         angle_residual = np.array([angle % angle_per_class])
         object_class = g_type2onehotclass[label['name']]
@@ -158,6 +158,9 @@ class StereoCustomDataset(Dataset):
         pc_in_numpy = pc_in_numpy
         if self.DS:
             pc_in_numpy = self.downsample(pc_in_numpy, NUM_OBJECT_POINT)
+        # if self.NORMAL:
+        #     pc_in_numpy = (pc_in_numpy - np.array(PC_MIN)) / \
+        #         (np.array(PC_MAX) - np.array(PC_MIN))
         label2, img_dir = self.convertlabelformat(label, label_dir)
         return pc_in_numpy, label2, img_dir
 
