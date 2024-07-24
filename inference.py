@@ -16,8 +16,8 @@ import cv2
 from numpy.linalg import inv
 
 from models.amodal_3D_model_iou_angle import Amodal3DModel
-# from models.amodal_3D_model import Amodal3DModel
-from utils.stereo_custom_dataset import StereoCustomDataset
+from models.amodal_3D_model import Amodal3DModel
+# from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 
 save_path = os.path.join(BASE_DIR, "results")
@@ -145,8 +145,11 @@ def main():
 
     model = Amodal3DModel()
     model.to(device)
+
     # result_path = f"{save_path}/0714/0714_epoch45.pth"
-    result_path = f"{save_path}/0723-1816/0723-1816_epoch200.pth"
+    # result_path = f"{save_path}/0723-1816/0723-1816_epoch200.pth"
+
+    result_path = f"{save_path}/0724-1516/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)

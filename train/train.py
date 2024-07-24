@@ -20,6 +20,7 @@ from models.amodal_3D_model_iou_angle import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
+from src.pytorchtools import EarlyStopping
 from src.f import combine_dicts_to_list
 
 pc_train_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
@@ -162,6 +163,9 @@ def train():
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=LR_STEPS, gamma=GAMMA)
 
+    early_stopping = EarlyStopping(
+        patience=50, verbose=True, path=f"{result_path}/early_stopping.pt")
+
     best_iou3d_70 = 0.0
     train_total_losses_data = []
     test_total_losses_data = []
@@ -230,7 +234,7 @@ def train():
             for param_group in optimizer.param_groups:
                 param_group['lr'] = MIN_LR
 
-        if epoch % 10 == 0 and epoch != 0:
+        if epoch % 20 == 0 and epoch != 0:
             savepath = f"{result_path}/train_result_epoch{epoch}.csv"
             csv_data = train_save_dic
             df = pd.DataFrame.from_dict(csv_data)
@@ -242,7 +246,6 @@ def train():
             df = pd.DataFrame.from_dict(csv_data)
             df.to_csv(savepath, index=True)
             print(f"Saved the .csv file as {savepath}")
-            break
 
         if test_metrics['iou3d_0.7'] >= best_iou3d_70:
             best_iou3d_70 = test_metrics['iou3d_0.7']
@@ -253,7 +256,13 @@ def train():
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }
-    savepath = f"{result_path}/best.pth"
+        # early_stopping needs the validation loss to check if it has decresed
+        early_stopping(train_losses['total_loss'], model)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+
+    savepath = f"{result_path}/best.pt"
     torch.save(best_state, savepath)
     print(f"Saved the best epoch model as {savepath}")
 
@@ -264,7 +273,7 @@ def train():
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }
-    savepath = f"{result_path}/last.pth"
+    savepath = f"{result_path}/last.pt"
     torch.save(last_state, savepath)
     print(f"Saved the last epoch model as {savepath}")
 

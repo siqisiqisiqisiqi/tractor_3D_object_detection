@@ -152,7 +152,7 @@ class PointNetLoss(nn.Module):
                 heading_class_label, heading_residual_label,
                 size_residual_normalized, size_residual,
                 size_class_label, size_residual_label,
-                corner_loss_weight=10.0, box_loss_weight=10):
+                corner_loss_weight=0, box_loss_weight=10):
         '''
         1.InsSeg
         logits: torch.Size([32, 1024, 2]) torch.float32

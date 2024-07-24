@@ -8,11 +8,11 @@ WEIGHT_DECAY = 0.0001
 LR_STEPS = 10
 GAMMA = 0.3
 BATCH_SIZE = 8
-MAX_EPOCH = 50
+MAX_EPOCH = 200
 MIN_LR = 1e-5
 
 ############################################################################
-NUM_HEADING_BIN = 12
+NUM_HEADING_BIN = 8
 NUM_SIZE_CLUSTER = 3  # one cluster for each type
 NUM_OBJECT_POINT = 1024
 

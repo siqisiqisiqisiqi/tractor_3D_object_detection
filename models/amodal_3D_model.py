@@ -253,25 +253,25 @@ class Amodal3DModel(nn.Module):
             for key in losses.keys():
                 losses[key] = losses[key] / bs
 
-                with torch.no_grad():
-                    iou2ds, iou3ds, corners = compute_box3d_iou(
-                        box3d_center.detach().cpu().numpy(),
-                        heading_scores.detach().cpu().numpy(),
-                        heading_residual.detach().cpu().numpy(),
-                        one_hot.detach().cpu().numpy(),
-                        size_residual.detach().cpu().numpy(),
-                        box3d_center_label.detach().cpu().numpy(),
-                        heading_class_label.detach().cpu().numpy().squeeze(),
-                        heading_residual_label.detach().cpu().numpy().squeeze(),
-                        size_class_label.detach().cpu().numpy().squeeze(),
-                        size_residual_label.detach().cpu().numpy())
-                metrics = {
-                    'corners': corners,
-                    'iou2d': iou2ds.mean(),
-                    'iou3d': iou3ds.mean(),
-                    'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs
-                }
-                return losses, metrics
+            with torch.no_grad():
+                iou2ds, iou3ds, corners = compute_box3d_iou(
+                    box3d_center.detach().cpu().numpy(),
+                    heading_scores.detach().cpu().numpy(),
+                    heading_residual.detach().cpu().numpy(),
+                    one_hot.detach().cpu().numpy(),
+                    size_residual.detach().cpu().numpy(),
+                    box3d_center_label.detach().cpu().numpy(),
+                    heading_class_label.detach().cpu().numpy().squeeze(),
+                    heading_residual_label.detach().cpu().numpy().squeeze(),
+                    size_class_label.detach().cpu().numpy().squeeze(),
+                    size_residual_label.detach().cpu().numpy())
+            metrics = {
+                'corners': corners,
+                'iou2d': iou2ds.mean(),
+                'iou3d': iou3ds.mean(),
+                'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs
+            }
+            return losses, metrics
 
 
 if __name__ == "__main__":
