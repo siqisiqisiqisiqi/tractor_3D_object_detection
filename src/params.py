@@ -12,9 +12,9 @@ MAX_EPOCH = 200
 MIN_LR = 1e-5
 
 ############################################################################
-NUM_HEADING_BIN = 8
+NUM_HEADING_BIN = 1
 NUM_SIZE_CLUSTER = 3  # one cluster for each type
-NUM_OBJECT_POINT = 1024
+NUM_OBJECT_POINT = 2048
 
 ###########################################################################
 g_type2class = {'road cone': 0, 'box': 1, 'human': 2}

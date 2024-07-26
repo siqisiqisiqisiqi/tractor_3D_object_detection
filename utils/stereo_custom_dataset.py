@@ -175,7 +175,7 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(
         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
-    for batch, (train_features, train_labels, _) in enumerate(train_dataloader):
+    for batch, (train_features, train_labels, _) in enumerate(test_dataloader):
         # print(train_features.shape)
         pass
         # break

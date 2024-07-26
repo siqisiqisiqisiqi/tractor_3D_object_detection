@@ -148,6 +148,8 @@ class STNxyz(nn.Module):
         return x
 
 # TODO: Transformer is used to get rid onf the outlier points
+
+
 class TransformerBasedFilter():
     pass
 
@@ -194,7 +196,7 @@ class Amodal3DModel(nn.Module):
         bs = point_cloud.shape[0]  # batch size
         # one_hot = label_dicts.get('one_hot').to(torch.float)
         one_hot = one_hot.to(torch.float)
-        #Todo: delete this function
+
         # object_pts_xyz size (batchsize, number object point, 3)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
 
@@ -238,14 +240,21 @@ class Amodal3DModel(nn.Module):
                 'angle_class')  # torch.Size([32, 1])
             heading_residual_label = label_dicts.get(
                 'angle_residual')  # torch.Size([32, 1])
-            # shape = heading_class_label.shape[0]
+
+            # losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
+            #                    heading_residual_normalized,
+            #                    heading_residual,
+            #                    heading_class_label, heading_residual_label,
+            #                    size_residual_normalized,
+            #                    size_residual,
+            #                    size_class_label, size_residual_label)
             losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
                                heading_residual_normalized,
                                heading_residual,
                                heading_class_label, heading_residual_label,
                                size_residual_normalized,
                                size_residual,
-                               size_class_label, size_residual_label)
+                               size_class_label, size_residual_label, mask_xyz_mean)
 
             for key in losses.keys():
                 losses[key] = losses[key] / bs

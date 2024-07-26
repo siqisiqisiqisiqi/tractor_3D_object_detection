@@ -26,11 +26,11 @@ from src.f import combine_dicts_to_list
 pc_train_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
 label_train_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
 
-pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
-label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
+# pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
+# label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
 
-# pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
-# label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
+pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
 
 save_path = os.path.join(ROOT_DIR, "results")
 
@@ -65,7 +65,8 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
         'iou_value_loss': 0.0,
         'size_residual_normalized_loss': 0.0,
         'stage1_center_loss': 0.0,
-        'corners_loss': 0.0
+        'corners_loss': 0.0,
+        'mask_center_loss': 0.0
     }
 
     test_metrics = {
@@ -139,7 +140,7 @@ def train():
     test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=False)
     test_dataloader = DataLoader(
         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
@@ -180,7 +181,8 @@ def train():
             'iou_value_loss': 0.0,
             'size_residual_normalized_loss': 0.0,
             'stage1_center_loss': 0.0,
-            'corners_loss': 0.0
+            'corners_loss': 0.0,
+            'mask_center_loss': 0.0
         }
         train_metrics = {
             'iou2d': 0.0,

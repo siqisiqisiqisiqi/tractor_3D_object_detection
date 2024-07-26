@@ -151,7 +151,7 @@ class PointNetLoss(nn.Module):
                 heading_residual_normalized, heading_residual,
                 heading_class_label, heading_residual_label,
                 size_residual_normalized, size_residual,
-                size_class_label, size_residual_label,
+                size_class_label, size_residual_label, mask_xyz_mean,
                 corner_loss_weight=0, box_loss_weight=10):
         '''
         1.InsSeg
@@ -187,6 +187,9 @@ class PointNetLoss(nn.Module):
 
         stage1_center_dist = torch.norm(center - stage1_center, dim=1)  # (32,)
         stage1_center_loss = huber_loss(stage1_center_dist, delta=1.0)
+
+        mask_center_dist = torch.norm(center - mask_xyz_mean, dim=1)
+        mask_center_loss = huber_loss(mask_center_dist, delta=1.0)
 
         # Heading Loss
         hcls_onehot = torch.eye(NUM_HEADING_BIN).cuda()[
@@ -280,5 +283,6 @@ class PointNetLoss(nn.Module):
             'size_residual_normalized_loss': box_loss_weight * size_residual_normalized_loss,
             'stage1_center_loss': box_loss_weight * size_residual_normalized_loss,
             'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
+            'mask_center_loss': box_loss_weight * mask_center_loss
         }
         return losses
