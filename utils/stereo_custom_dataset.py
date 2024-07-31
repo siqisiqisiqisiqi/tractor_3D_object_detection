@@ -47,6 +47,7 @@ class StereoCustomDataset(Dataset):
         self.DS = downsample
         self.NORMAL = normalization
         self.pc_list = glob(f"{pc_path}/*.ply")
+        print(self.pc_path)
 
     def downsample(self, pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
         """downsample the pointcloud
@@ -95,7 +96,7 @@ class StereoCustomDataset(Dataset):
         size = label['dimensions']
         box_size = np.array(
             [size['length'], size['width'], size['height']])
-        size_residual = standard_size - box_size
+        size_residual = box_size - standard_size
         angle = label['rotations']['z']
         angle = angle_thres(angle)
         angle_per_class = np.pi / float(NUM_HEADING_BIN)
@@ -165,17 +166,17 @@ class StereoCustomDataset(Dataset):
         return pc_in_numpy, label2, img_dir
 
 
-if __name__ == "__main__":
-    BATCH_SIZE = 8
-    train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+# if __name__ == "__main__":
+#     BATCH_SIZE = 8
+#     train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
+#     train_dataloader = DataLoader(
+#         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
-    test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+#     test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
+#     test_dataloader = DataLoader(
+#         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
-    for batch, (train_features, train_labels, _) in enumerate(test_dataloader):
-        # print(train_features.shape)
-        pass
+#     for batch, (train_features, train_labels, _) in enumerate(test_dataloader):
+#         # print(train_features.shape)
+#         pass
         # break

@@ -16,7 +16,7 @@ from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from models.amodal_3D_model_iou_angle import Amodal3DModel
+from models.amodal_3D_model_transformer import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
@@ -75,15 +75,13 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
         'iou3d_0.7': 0.0,
     }
 
-    n_batches = 0
+    model.eval()
     for i, (features, label_dicts, _) in tqdm(enumerate(loader), total=len(loader), smoothing=0.9):
-        n_batches += 1
 
         data_dicts_var = {key: value.cuda().to(torch.float)
                           for key, value in label_dicts.items()}
         one_hot = data_dicts_var.get('one_hot').to(torch.float)
         features = features.to(device, dtype=torch.float)
-        model = model.eval()
 
         with torch.no_grad():
             losses, metrics = model(features, one_hot, data_dicts_var)
@@ -96,10 +94,10 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
                 test_metrics[key] += metrics[key]
 
     for key in test_losses.keys():
-        test_losses[key] /= n_batches
+        test_losses[key] /= len(loader)
         test_losses[key] = round(test_losses[key], 5)
     for key in test_metrics.keys():
-        test_metrics[key] /= n_batches
+        test_metrics[key] /= len(loader)
         test_metrics[key] = round(test_metrics[key], 5)
 
     return test_losses, test_metrics
@@ -142,7 +140,7 @@ def train():
     train_dataloader = DataLoader(
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=False)
     test_dataloader = DataLoader(
-        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=False)
 
     strtime = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
     strtime = strtime[4:13]
@@ -165,7 +163,7 @@ def train():
         optimizer, step_size=LR_STEPS, gamma=GAMMA)
 
     early_stopping = EarlyStopping(
-        patience=50, verbose=True, path=f"{result_path}/early_stopping.pt")
+        patience=30, verbose=True, path=f"{result_path}/early_stopping.pt")
 
     best_iou3d_70 = 0.0
     train_total_losses_data = []
@@ -189,14 +187,11 @@ def train():
             'iou3d': 0.0,
             'iou3d_0.7': 0.0,
         }
-        n_batches = 0
+        model.train()
         for i, (features, label_dicts, _) in tqdm(enumerate(train_dataloader), total=len(train_dataloader), smoothing=0.9):
-            n_batches += 1
 
             data_dicts_var = {key: value.cuda().to(torch.float)
                               for key, value in label_dicts.items()}
-            optimizer.zero_grad()
-            model = model.train()
 
             features = features.to(device, dtype=torch.float)
             one_hot = data_dicts_var.get('one_hot').to(torch.float)
@@ -204,6 +199,7 @@ def train():
             total_loss = losses['total_loss']
             total_loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
 
             for key in train_losses.keys():
                 if key in losses.keys():
@@ -213,10 +209,10 @@ def train():
                     train_metrics[key] += metrics[key]
 
         for key in train_losses.keys():
-            train_losses[key] /= n_batches
+            train_losses[key] /= len(train_dataloader)
             train_losses[key] = round(train_losses[key], 5)
         for key in train_metrics.keys():
-            train_metrics[key] /= n_batches
+            train_metrics[key] /= len(train_dataloader)
             train_metrics[key] = round(train_metrics[key], 5)
         train_epoch_dic = combine_dicts_to_list(train_losses, train_metrics)
         train_save_dic = combine_dicts_to_list(train_save_dic, train_epoch_dic)
@@ -232,18 +228,19 @@ def train():
         test_total_losses_data.append(test_losses['total_loss'])
         scheduler.step()
 
+        print(f"learning rate is {scheduler.get_lr()[0]}")
         if scheduler.get_lr()[0] < MIN_LR:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = MIN_LR
 
         if epoch % 20 == 0 and epoch != 0:
-            savepath = f"{result_path}/train_result_epoch{epoch}.csv"
+            savepath = f"{result_path}/train_result.csv"
             csv_data = train_save_dic
             df = pd.DataFrame.from_dict(csv_data)
             df.to_csv(savepath, index=True)
             print(f"Saved the .csv file as {savepath}")
 
-            savepath = f"{result_path}/test_result_epoch{epoch}.csv"
+            savepath = f"{result_path}/test_result.csv"
             csv_data = test_save_dic
             df = pd.DataFrame.from_dict(csv_data)
             df.to_csv(savepath, index=True)

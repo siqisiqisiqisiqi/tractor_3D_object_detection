@@ -2,19 +2,20 @@ import numpy as np
 
 
 ############################################################################
-BASE_LR = 0.0002
+BASE_LR = 0.0001
 # BASE_LR = 0.001
 WEIGHT_DECAY = 0.0001
+WEIGHT_DECAY = 0
 LR_STEPS = 10
-GAMMA = 0.3
-BATCH_SIZE = 8
+GAMMA = 0.8
+BATCH_SIZE = 32
 MAX_EPOCH = 200
-MIN_LR = 1e-5
+MIN_LR = 5e-6
 
 ############################################################################
 NUM_HEADING_BIN = 1
 NUM_SIZE_CLUSTER = 3  # one cluster for each type
-NUM_OBJECT_POINT = 2048
+NUM_OBJECT_POINT = 1024
 
 ###########################################################################
 g_type2class = {'road cone': 0, 'box': 1, 'human': 2}

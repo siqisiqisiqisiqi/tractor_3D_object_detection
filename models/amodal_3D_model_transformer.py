@@ -17,10 +17,14 @@ from numpy import ndarray
 from torch.nn import init
 from torch.utils.data import DataLoader
 
-from utils.model_util_iou_angle import PointNetLoss, parse_output_to_tensors
+from utils.model_util_iou_angle_center import PointNetLoss, parse_output_to_tensors, label_to_tensors
 from utils.point_cloud_process import point_cloud_process
 from utils.compute_box3d_iou import compute_box3d_iou, calculate_corner
 from utils.stereo_custom_dataset import StereoCustomDataset
+from pointnet2.pointnet2_modules import PointnetSAModuleVotes
+from pointnet2.pointnet2_utils import furthest_point_sample
+from models.position_embedding import PositionEmbeddingCoordsSine
+from models.helpers import GenericMLP
 from src.params import *
 
 
@@ -49,14 +53,17 @@ class PointNetEstimation(nn.Module):
 
         self.n_classes = n_classes
 
-        self.fc1 = nn.Linear(512 + n_classes, 512)
+        self.fc1 = nn.Linear(512 + n_classes + 3, 512)
         self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 3 + 1 + 1 * 3)  # center, angle, size
+        self.fc3 = nn.Linear(256, 64)
+        self.fc4 = nn.Linear(64, 3 + 1 + 1 * 3)  # center, angle, size
         self.fcbn1 = nn.BatchNorm1d(512)
         self.fcbn2 = nn.BatchNorm1d(256)
+        self.fcbn3 = nn.BatchNorm1d(64)
         self.dropout12 = nn.Dropout(0.2)
+        self.dropout13 = nn.Dropout(0.2)
 
-    def forward(self, pts: ndarray, one_hot_vec: ndarray) -> tensor:
+    def forward(self, pts: ndarray, one_hot_vec: ndarray, stage1_center: ndarray) -> tensor:
         """
         Parameters
         ----------
@@ -83,10 +90,11 @@ class PointNetEstimation(nn.Module):
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         expand_global_feat = torch.cat(
-            [global_feat, expand_one_hot_vec], 1)  # bs,515
+            [global_feat, expand_one_hot_vec, stage1_center], 1)  # bs,515
         x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
         x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
-        box_pred = self.fc3(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
+        x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
+        box_pred = self.fc4(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
         return box_pred
 
 
@@ -147,11 +155,84 @@ class STNxyz(nn.Module):
         x = self.fc3(x)  # bs,
         return x
 
-# TODO: Transformer is used to get rid onf the outlier points
 
+class TransformerBasedFilter(nn.Module):
+    def __init__(self,
+                 num_token: int = 256,
+                 dim_model: int = 128,
+                 num_heads: int = 2,
+                 num_encoder_layers: int = 3,
+                 num_decoder_layers: int = 3,
+                 position_embedding: str = "fourier",
+                 dropout_p: float = 0.2):
+        super().__init__()
+        preencoder_mpl_dims = [0, 64, 128, dim_model]
+        self.preencoder = PointnetSAModuleVotes(
+            radius=0.2,
+            nsample=64,
+            npoint=num_token,
+            mlp=preencoder_mpl_dims,
+            normalize_xyz=True,
+        )
+        self.transformer = nn.Transformer(
+            d_model=dim_model,
+            nhead=num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dropout=dropout_p,
+            batch_first=True
+        )
+        self.query_projection = GenericMLP(
+            input_dim=dim_model,
+            hidden_dims=[dim_model],
+            output_dim=dim_model,
+            use_conv=True,
+            output_use_activation=True,
+            hidden_use_bias=True,
+        )
 
-class TransformerBasedFilter():
-    pass
+        self.pos_embedding = PositionEmbeddingCoordsSine(
+            d_pos=dim_model, pos_type=position_embedding, normalize=True
+        )
+
+        self.fc1 = nn.Linear(dim_model, 64)
+        self.fc2 = nn.Linear(64, 16)
+        self.fc3 = nn.Linear(16, 3)
+
+        self.fcbn1 = nn.BatchNorm1d(64)
+        self.fcbn2 = nn.BatchNorm1d(16)
+
+    def get_query_embeddings(self, encoder_xyz, point_cloud_dims, num_queries=256):
+        query_inds = furthest_point_sample(encoder_xyz, num_queries)
+        query_inds = query_inds.long()
+        query_xyz = [torch.gather(encoder_xyz[..., x], 1, query_inds)
+                     for x in range(3)]
+        query_xyz = torch.stack(query_xyz)
+        query_xyz = query_xyz.permute(1, 2, 0)
+
+        pos_embed = self.pos_embedding(query_xyz, input_range=point_cloud_dims)
+        query_embed = self.query_projection(pos_embed)
+        return query_xyz, query_embed
+
+    def forward(self, pointcloud, one_hot_vec: tensor):
+        bs = pointcloud.shape[0]
+        pc_max = torch.tensor(PC_MAX).repeat(bs, 1)
+        pc_min = torch.tensor(PC_MIN).repeat(bs, 1)
+        point_cloud_dims = torch.stack((pc_min, pc_max)).cuda()
+
+        xyz, pre_enc_features, pre_enc_inds = self.preencoder(pointcloud)
+        src = pre_enc_features.permute(0, 2, 1)
+        query_xyz, query_embed = self.get_query_embeddings(
+            pointcloud, point_cloud_dims)
+        tgt = query_embed.permute(0, 2, 1)
+        transformer_out = self.transformer(src, tgt)
+
+        x = F.relu(self.fcbn1(self.fc1(transformer_out).permute(0, 2, 1)))
+        x = x.permute(0, 2, 1)
+        x = F.relu(self.fcbn2(self.fc2(x).permute(0, 2, 1)))
+        x = x.permute(0, 2, 1)
+        x = self.fc3(x)
+        return x
 
 
 class Amodal3DModel(nn.Module):
@@ -168,6 +249,7 @@ class Amodal3DModel(nn.Module):
         super(Amodal3DModel, self).__init__()
         self.n_classes = n_classes
         self.n_channel = n_channel
+        self.transformer = TransformerBasedFilter()
         self.STN = STNxyz(n_classes=3)
         self.est = PointNetEstimation(n_classes=3)
         self.Loss = PointNetLoss()
@@ -179,7 +261,10 @@ class Amodal3DModel(nn.Module):
         ----------
         features : ndarray
             object point cloud
-            size [bs, num_point, 6]
+            size [bs, num_point, 3]
+        one_hot: ndarray
+            object class
+            size [bs, num_class]
         label_dicts : dict
             labeled result of the 3D bounding box
 
@@ -190,36 +275,42 @@ class Amodal3DModel(nn.Module):
             metrics: iou and corner calculation
         """
         # point cloud after the instance segmentation
-        point_cloud = features.permute(0, 2, 1)
-        point_cloud = point_cloud[:, :self.n_channel, :]
-
-        bs = point_cloud.shape[0]  # batch size
-        # one_hot = label_dicts.get('one_hot').to(torch.float)
+        bs = features.shape[0]  # batch size
         one_hot = one_hot.to(torch.float)
-        # Todo: delete this function
-        # object_pts_xyz size (batchsize, number object point, 3)
+
+        point_cloud = features.contiguous()
+        point_cloud = point_cloud[:, :, :self.n_channel]
+        # point_cloud = self.transformer(point_cloud, one_hot)
+
+        point_cloud = point_cloud.permute(0, 2, 1)
+
+        # object_pts_xyz size (batchsize, 3, number object point)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
 
         # T-net
-        object_pts_xyz = object_pts_xyz.cuda()
         center_delta = self.STN(object_pts_xyz, one_hot)  # (32,3)
         stage1_center = center_delta + mask_xyz_mean  # (32,3)
 
         if (np.isnan(stage1_center.cpu().detach().numpy()).any()):
             ipdb.set_trace()
         object_pts_xyz_new = object_pts_xyz - \
-            center_delta.view(
-                center_delta.shape[0], -1, 1).repeat(1, 1, object_pts_xyz.shape[-1])
+            center_delta.view(bs, -1, 1).repeat(1, 1, object_pts_xyz.shape[-1])
 
         # 3D Box Estimation
-        box_pred = self.est(object_pts_xyz_new, one_hot)
-        center_boxnet, \
-            heading_residual_normalized, heading_residual, \
-            size_residual_normalized, size_residual = \
-            parse_output_to_tensors(box_pred, one_hot)
+        box_pred = self.est(object_pts_xyz_new, one_hot, stage1_center)
+        center_boxnet, heading_residual_normalized, heading_residual, \
+            size_residual_normalized, size_residual = parse_output_to_tensors(
+                box_pred, one_hot)
 
-        box3d_center = center_boxnet + stage1_center  # bs,3
+        box3d_center = stage1_center + center_boxnet  # bs,3
         heading_scores = torch.ones((bs, 1)).cuda()
+
+        # center_boxnet, heading_residual_normalized, heading_residual, \
+        #     size_residual_normalized, size_residual = label_to_tensors(
+        #         label_dicts)
+        # box3d_center = center_boxnet
+        # stage1_center = center_boxnet
+
         if len(label_dicts) == 0:
             with torch.no_grad():
                 corners = calculate_corner(box3d_center.detach().cpu().numpy(),
@@ -230,24 +321,12 @@ class Amodal3DModel(nn.Module):
             return corners
 
         else:
-            box3d_center_label = label_dicts.get(
-                'box3d_center')  # torch.Size([32, 3])
-            size_class_label = label_dicts.get(
-                'size_class')  # torch.Size([32, 1])
-            size_residual_label = label_dicts.get(
-                'size_residual')  # torch.Size([32, 3])
-            heading_class_label = label_dicts.get(
-                'angle_class')  # torch.Size([32, 1])
-            heading_residual_label = label_dicts.get(
-                'angle_residual')  # torch.Size([32, 1])
+            box3d_center_label = label_dicts.get('box3d_center')
+            size_class_label = label_dicts.get('size_class')
+            size_residual_label = label_dicts.get('size_residual')
+            heading_class_label = label_dicts.get('angle_class')
+            heading_residual_label = label_dicts.get('angle_residual')
 
-            # losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
-            #                    heading_residual_normalized,
-            #                    heading_residual,
-            #                    heading_class_label, heading_residual_label,
-            #                    size_residual_normalized,
-            #                    size_residual,
-            #                    size_class_label, size_residual_label)
             losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
                                heading_residual_normalized,
                                heading_residual,
@@ -255,9 +334,6 @@ class Amodal3DModel(nn.Module):
                                size_residual_normalized,
                                size_residual,
                                size_class_label, size_residual_label, mask_xyz_mean)
-
-            for key in losses.keys():
-                losses[key] = losses[key] / bs
 
             with torch.no_grad():
                 iou2ds, iou3ds, corners = compute_box3d_iou(
@@ -281,8 +357,8 @@ class Amodal3DModel(nn.Module):
 
 
 if __name__ == "__main__":
-    pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
-    label_path = os.path.join(PARENT_DIR, "datasets", "labels")
+    pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+    label_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
 
     is_cuda = torch.cuda.is_available()
     if is_cuda:

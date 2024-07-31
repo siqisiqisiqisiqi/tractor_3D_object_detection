@@ -14,11 +14,15 @@ def class2angle(pred_cls, residual, num_class, to_label_format=True):
     ''' Inverse function to angle2class.
     If to_label_format, adjust angle to the range as in labels.
     '''
-    angle_per_class = 2 * np.pi / float(num_class)
+    angle_per_class = np.pi / float(num_class)
     angle_center = pred_cls * angle_per_class
     angle = angle_center + residual
-    if to_label_format and angle > np.pi:
-        angle = angle - 2 * np.pi
+
+    if to_label_format:
+        while angle < 0:
+            angle = angle + 2 * np.pi
+        while angle > np.pi:
+            angle = angle - np.pi
     return angle
 
 
@@ -131,7 +135,8 @@ def compute_box3d_iou(center_pred,
         # calculate the 3D orientation and size
         heading_angle = class2angle(heading_class[i],
                                     heading_residual[i], NUM_HEADING_BIN)
-        # heading_angle = 0
+        # debug only
+        heading_angle = heading_angle + 1e-5
         box_size = class2size(size_class[i], size_residual[i])
         # calculate the box corner coordinates
         corners_3d = get_3d_box(box_size, heading_angle, center_pred[i])

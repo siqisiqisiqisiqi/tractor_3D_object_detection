@@ -17,7 +17,7 @@ from numpy import ndarray
 from torch.nn import init
 from torch.utils.data import DataLoader
 
-from utils.model_util import PointNetLoss, parse_output_to_tensors
+from utils.model_util import PointNetLoss, parse_output_to_tensors, label_to_tensors
 from utils.point_cloud_process import point_cloud_process
 from utils.compute_box3d_iou import compute_box3d_iou, calculate_corner
 from utils.stereo_custom_dataset import StereoCustomDataset
@@ -49,15 +49,18 @@ class PointNetEstimation(nn.Module):
 
         self.n_classes = n_classes
 
-        self.fc1 = nn.Linear(512 + n_classes, 512)
+        self.fc1 = nn.Linear(512 + n_classes + 3, 512)
         self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 3 + NUM_HEADING_BIN *
+        self.fc3 = nn.Linear(256, 64)
+        self.fc4 = nn.Linear(64, 3 + NUM_HEADING_BIN *
                              2 + 1 * 3)
         self.fcbn1 = nn.BatchNorm1d(512)
         self.fcbn2 = nn.BatchNorm1d(256)
+        self.fcbn3 = nn.BatchNorm1d(64)
         self.dropout12 = nn.Dropout(0.2)
+        self.dropout13 = nn.Dropout(0.2)
 
-    def forward(self, pts: ndarray, one_hot_vec: ndarray) -> tensor:
+    def forward(self, pts: ndarray, one_hot_vec: ndarray, stage1_center: ndarray) -> tensor:
         """
         Parameters
         ----------
@@ -84,10 +87,11 @@ class PointNetEstimation(nn.Module):
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         expand_global_feat = torch.cat(
-            [global_feat, expand_one_hot_vec], 1)  # bs,515
+            [global_feat, expand_one_hot_vec, stage1_center], 1)  # bs,515
         x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
         x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
-        box_pred = self.fc3(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
+        x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
+        box_pred = self.fc4(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
         return box_pred
 
 
@@ -148,12 +152,6 @@ class STNxyz(nn.Module):
         x = self.fc3(x)  # bs,
         return x
 
-# TODO: Transformer is used to get rid onf the outlier points
-
-
-class TransformerBasedFilter():
-    pass
-
 
 class Amodal3DModel(nn.Module):
     def __init__(self, n_classes: int = 3, n_channel: int = 3):
@@ -213,13 +211,18 @@ class Amodal3DModel(nn.Module):
                 center_delta.shape[0], -1, 1).repeat(1, 1, object_pts_xyz.shape[-1])
 
         # 3D Box Estimation
-        box_pred = self.est(object_pts_xyz_new, one_hot)
+        box_pred = self.est(object_pts_xyz_new, one_hot, stage1_center)
         center_boxnet, \
             heading_scores, heading_residual_normalized, heading_residual, \
             size_residual_normalized, size_residual = \
             parse_output_to_tensors(box_pred, one_hot)
-
         box3d_center = center_boxnet + stage1_center  # bs,3
+
+        # center_boxnet, heading_residual_normalized, heading_residual, \
+        #     size_residual_normalized, size_residual, heading_scores = label_to_tensors(
+        #         label_dicts)
+        # box3d_center = center_boxnet
+        # stage1_center = center_boxnet
 
         if len(label_dicts) == 0:
             with torch.no_grad():
@@ -250,9 +253,6 @@ class Amodal3DModel(nn.Module):
                                size_residual,
                                size_class_label, size_residual_label)
 
-            for key in losses.keys():
-                losses[key] = losses[key] / bs
-
             with torch.no_grad():
                 iou2ds, iou3ds, corners = compute_box3d_iou(
                     box3d_center.detach().cpu().numpy(),
@@ -275,8 +275,8 @@ class Amodal3DModel(nn.Module):
 
 
 if __name__ == "__main__":
-    pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds")
-    label_path = os.path.join(PARENT_DIR, "datasets", "labels")
+    pc_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+    label_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
 
     is_cuda = torch.cuda.is_available()
     if is_cuda:
