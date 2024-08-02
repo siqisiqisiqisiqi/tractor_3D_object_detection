@@ -24,5 +24,5 @@ def point_cloud_process(point_cloud: ndarray) -> Tuple[ndarray, ndarray]:
     xyz_sum = point_cloud.sum(2, keepdim=True)
     xyz_mean = xyz_sum / num_point
     point_cloud_trans = point_cloud - xyz_mean.repeat(1, 1, num_point)
-    xyz_mean = xyz_mean.squeeze()
+    xyz_mean = xyz_mean.squeeze(2)
     return point_cloud_trans, xyz_mean

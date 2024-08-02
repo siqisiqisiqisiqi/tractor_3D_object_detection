@@ -2,14 +2,14 @@ import numpy as np
 
 
 ############################################################################
-BASE_LR = 0.0001
-# BASE_LR = 0.001
+BASE_LR = 0.0002
+# BASE_LR = 0.0001
 WEIGHT_DECAY = 0.0001
 WEIGHT_DECAY = 0
 LR_STEPS = 10
-GAMMA = 0.8
+GAMMA = 0.87
 BATCH_SIZE = 32
-MAX_EPOCH = 200
+MAX_EPOCH = 400
 MIN_LR = 5e-6
 
 ############################################################################

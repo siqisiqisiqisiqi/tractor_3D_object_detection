@@ -82,17 +82,17 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
         test_n_batches += 1
 
         data_dicts_var = {key: value.cuda().to(torch.float)        # if epoch % 20 == 0 and epoch != 0:
-        #     savepath = f"{result_path}/train_result_epoch{epoch}.csv"
-        #     csv_data = train_save_dic
-        #     df = pd.DataFrame.from_dict(csv_data)
-        #     df.to_csv(savepath, index=True)
-        #     print(f"Saved the .csv file as {savepath}")
+                          #     savepath = f"{result_path}/train_result_epoch{epoch}.csv"
+                          #     csv_data = train_save_dic
+                          #     df = pd.DataFrame.from_dict(csv_data)
+                          #     df.to_csv(savepath, index=True)
+                          #     print(f"Saved the .csv file as {savepath}")
 
-        #     savepath = f"{result_path}/test_result_epoch{epoch}.csv"
-        #     csv_data = test_save_dic
-        #     df = pd.DataFrame.from_dict(csv_data)
-        #     df.to_csv(savepath, index=True)
-        #     print(f"Saved the .csv file as {savepath}")
+                          #     savepath = f"{result_path}/test_result_epoch{epoch}.csv"
+                          #     csv_data = test_save_dic
+                          #     df = pd.DataFrame.from_dict(csv_data)
+                          #     df.to_csv(savepath, index=True)
+                          #     print(f"Saved the .csv file as {savepath}")
                           for key, value in label_dicts.items()}
         one_hot = data_dicts_var.get('one_hot').to(torch.float)
         features = features.to(device, dtype=torch.float)
@@ -167,7 +167,7 @@ def train():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"./results/0728-1843/best.pt"
+    result_path = f"../results/0802-1032/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)

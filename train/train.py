@@ -66,7 +66,8 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
         'size_residual_normalized_loss': 0.0,
         'stage1_center_loss': 0.0,
         'corners_loss': 0.0,
-        'mask_center_loss': 0.0
+        'mask_center_loss': 0.0,
+        'transformer_loss': 0.0,
     }
 
     test_metrics = {
@@ -165,7 +166,7 @@ def train():
     early_stopping = EarlyStopping(
         patience=30, verbose=True, path=f"{result_path}/early_stopping.pt")
 
-    best_iou3d_70 = 0.0
+    best_iou3d = 0.0
     train_total_losses_data = []
     test_total_losses_data = []
     train_save_dic = {}
@@ -180,7 +181,8 @@ def train():
             'size_residual_normalized_loss': 0.0,
             'stage1_center_loss': 0.0,
             'corners_loss': 0.0,
-            'mask_center_loss': 0.0
+            'mask_center_loss': 0.0,
+            'transformer_loss': 0.0,
         }
         train_metrics = {
             'iou2d': 0.0,
@@ -246,17 +248,17 @@ def train():
             df.to_csv(savepath, index=True)
             print(f"Saved the .csv file as {savepath}")
 
-        if test_metrics['iou3d_0.7'] >= best_iou3d_70:
-            best_iou3d_70 = test_metrics['iou3d_0.7']
+        if test_metrics['iou3d'] >= best_iou3d:
+            best_iou3d = test_metrics['iou3d']
             best_state = {
                 'epoch': epoch + 1,
-                'train_iou3d_0.7': train_metrics['iou3d_0.7'],
-                'test_iou3d_0.7': test_metrics['iou3d_0.7'],
+                'train_iou3d': train_metrics['iou3d'],
+                'test_iou3d': test_metrics['iou3d'],
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }
         # early_stopping needs the validation loss to check if it has decresed
-        early_stopping(train_losses['total_loss'], model)
+        early_stopping(test_losses['total_loss'], model)
         if early_stopping.early_stop:
             print("Early stopping")
             break

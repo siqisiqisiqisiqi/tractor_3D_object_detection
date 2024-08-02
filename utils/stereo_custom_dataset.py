@@ -77,7 +77,7 @@ class StereoCustomDataset(Dataset):
         """convert the labeled 3D bounding box in the desired format
 
         Parameters
-        ----------
+        ----------all_data_tensor
         label : dict
             label data from the file
         label_dir : str
@@ -106,7 +106,7 @@ class StereoCustomDataset(Dataset):
         one_hot = np.zeros(NUM_SIZE_CLUSTER)
         one_hot[object_class] = 1
         x = label_dir.split("/")
-        x[-2] = "images"
+        x[-3] = "images"
         a = re.findall(r'\d+', x[-1])
         num = a[0]
         x[-1] = f"Image_{num}.jpg"
@@ -166,17 +166,17 @@ class StereoCustomDataset(Dataset):
         return pc_in_numpy, label2, img_dir
 
 
-# if __name__ == "__main__":
-#     BATCH_SIZE = 8
-#     train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
-#     train_dataloader = DataLoader(
-#         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+if __name__ == "__main__":
+    BATCH_SIZE = 8
+    train_dataset = StereoCustomDataset(pc_train_path, label_train_path)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
-#     test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
-#     test_dataloader = DataLoader(
-#         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
+    test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4, drop_last=True)
 
-#     for batch, (train_features, train_labels, _) in enumerate(test_dataloader):
-#         # print(train_features.shape)
-#         pass
-        # break
+    for batch, (train_features, train_labels, _) in enumerate(test_dataloader):
+        # print(train_features.shape)
+        pass
+        break

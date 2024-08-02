@@ -1,6 +1,5 @@
 import sys
 import os
-import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
@@ -12,12 +11,14 @@ from numpy import ndarray
 import open3d as o3d
 import time
 import glob
+import random
 import cv2
 from numpy.linalg import inv
 
 from models.amodal_3D_model_transformer import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
-# from utils.stereo_custom_dataset import StereoCustomDataset
+from utils.stereo_custom_dataset import StereoCustomDataset
+from torch.utils.data import DataLoader
 from src.params import *
 
 save_path = os.path.join(BASE_DIR, "results")
@@ -73,7 +74,61 @@ def point_cloud_class(pt_path_list):
     return one_hot
 
 
-def visaulization(img_dir: str, corners: list):
+def draw_text(
+    img,
+    text,
+    uv_top_left=(5, 5),
+    color=(255, 255, 255),
+    fontScale=1,
+    thickness=2,
+    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+    outline_color=(0, 0, 0),
+    line_spacing=1.5,
+):
+    """
+    Draws multiline with an outline.
+    """
+    assert isinstance(text, str)
+
+    uv_top_left = np.array(uv_top_left, dtype=float)
+    assert uv_top_left.shape == (2,)
+
+    for line in text.splitlines():
+        (w, h), _ = cv2.getTextSize(
+            text=line,
+            fontFace=fontFace,
+            fontScale=fontScale,
+            thickness=thickness,
+        )
+        uv_bottom_left_i = uv_top_left + [0, h]
+        org = tuple(uv_bottom_left_i.astype(int))
+
+        if outline_color is not None:
+            cv2.putText(
+                img,
+                text=line,
+                org=org,
+                fontFace=fontFace,
+                fontScale=fontScale,
+                color=outline_color,
+                thickness=thickness * 3,
+                lineType=cv2.LINE_AA,
+            )
+        cv2.putText(
+            img,
+            text=line,
+            org=org,
+            fontFace=fontFace,
+            fontScale=fontScale,
+            color=color,
+            thickness=thickness,
+            lineType=cv2.LINE_AA,
+        )
+
+        uv_top_left += [0, h * line_spacing]
+
+
+def visaulization(img_dir: str, corners: list, metric: dict, idex: int):
     """Draw the 3D bounding box in the 2D image
 
     Parameters
@@ -83,6 +138,9 @@ def visaulization(img_dir: str, corners: list):
     corners : list  
         list of coordinates of corner in world reference frame. 
         Size batchsize x 8 x 3
+    metric: dict
+        contains {'total loss': total_loss, 'center_loss': center_loss,
+                             'heading loss': heading_loss, 'iou3d': iou3d}
     """
     # load the camera parameters
     with np.load('./camera_params/camera_param.npz') as X:
@@ -96,8 +154,6 @@ def visaulization(img_dir: str, corners: list):
         corner_image = (mtx @ corner_camera).T
         corner = corner_image[:, :2] / corner_image[:, 2:3]
         corner = corner.astype(int)
-        # # TODO: debug why the forward is not right
-        # corner[:, 0] = 1293 - corner[:, 0]
 
         corner1 = corner[:4, :]
         corner2 = corner[4:8, :]
@@ -131,12 +187,26 @@ def visaulization(img_dir: str, corners: list):
         beta = 0.55
         gamma = 0
         img = cv2.addWeighted(img, alpha, zeros_mask, beta, gamma)
-    cv2.imshow("Image", img)
+
+    metric_str = ""
+    for key in metric:
+        value = metric[key]
+        metric_str = metric_str + f"{key}: {value:1.4f}" + "\n"
+    draw_text(img, metric_str)
+    cv2.imshow(f"Image {idex}", img)
     k = cv2.waitKey(0)
+    cv2.destroyWindow(f"Image {idex}")
     return k
 
 
 def main():
+    SEED = 1
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    random.seed(SEED)
+
+    torch.backends.cudnn.deterministic = True
     is_cuda = torch.cuda.is_available()
     if is_cuda:
         device = torch.device("cuda")
@@ -146,36 +216,52 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    # result_path = f"{save_path}/0714/0714_epoch45.pth"
-    # result_path = f"{save_path}/0723-1816/0723-1816_epoch200.pth"
-
-    result_path = f"{save_path}/0731-1442/last.pt"
+    # result_path = f"{save_path}/0731-1640/best.pt"
+    result_path = f"{save_path}/0802-1711/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
-    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/test/Image_*")
-    for data in image_path_list:
-        img_path = data
-        a = data.split("/")[-1]
-        num = re.findall(r'\d+', a)
-        point_cloud_path = f"{PARENT_DIR}/datasets/pointclouds/train/Pointcloud{num[0]}_*"
-        point_cloud_path_list = glob.glob(point_cloud_path)
-        categ = point_cloud_class(point_cloud_path_list)
-        features = point_cloud_input(point_cloud_path_list)
+    BATCH_SIZE = 1
+    pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
+    label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
+    test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1, drop_last=True)
+    idex = 1
+    for batch, (features, test_labels, image_dir) in enumerate(test_dataloader):
+        data_dicts_var = {key: value.cuda().to(torch.float)
+                          for key, value in test_labels.items()}
+        one_hot = data_dicts_var.get('one_hot').to(torch.float)
         features = features.to(device, dtype=torch.float)
-        categ = categ.to(device, dtype=torch.float)
+
+        # for debug
+        if idex == 21:
+            print("test")
         with torch.no_grad():
-            tik = time.time()
-            corners = model(features, categ)
-            tok = time.time()
-            inference_time = (tok - tik) / len(point_cloud_path_list)
-            # print(f"inference time is {inference_time}")
-        k = visaulization(img_path, corners)
-        # print(k)
+            losses, metrics = model(features, one_hot, data_dicts_var)
+
+        total_loss = losses['total_loss'].detach().cpu().numpy()
+        center_loss = losses['center_loss'].detach().cpu().numpy()
+        heading_loss = losses['heading_residual_normalized_loss'].detach(
+        ).cpu().numpy()
+        size_loss = losses['size_residual_normalized_loss'].detach(
+        ).cpu().numpy()
+        transform_loss = losses['transformer_loss'].detach().cpu().numpy()
+        iou3d = metrics['iou3d']
+        evaluation_metric = {'total loss': total_loss, 'center loss': center_loss,
+                             'size loss': size_loss, 'heading loss': heading_loss,
+                             'transform loss': transform_loss, 'iou3d': iou3d}
+        corners = metrics['corners']
+        print(idex)
+        print(evaluation_metric)
+
+        k = visaulization(image_dir[0], corners, evaluation_metric, idex)
         if k == ord("q"):
             break
+        idex = idex + 1
+
     print("Completed the inference!")
 
 

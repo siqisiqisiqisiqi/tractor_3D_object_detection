@@ -158,6 +158,75 @@ for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i, :] = g_type_mean_size[g_class2type[i]]
 
 
+class TransformerLoss(nn.Module):
+    def __init__(self, delta_norm_loss_weight=0.001, center_loss_weight=0.5):
+        super(TransformerLoss, self).__init__()
+        self.delta_norm_loss_weight = delta_norm_loss_weight
+        self.center_loss_weight = center_loss_weight
+
+    def forward(self, mask_xyz_mean, point_cloud, x_delta, center_label,
+                size_class_label, size_residual_label,
+                heading_class_label, heading_residual_label):
+        bs = mask_xyz_mean.shape[0]
+
+        # Center Regression Loss
+        center_dist = torch.norm(mask_xyz_mean - center_label, dim=1)
+        center_loss = self.center_loss_weight * \
+            huber_loss(center_dist, delta=1.0)
+
+        # Calculate the groundtruth corners in xy plane
+        hcls_onehot = torch.eye(NUM_HEADING_BIN).cuda()[
+            heading_class_label.squeeze().long()]
+        scls_onehot = torch.eye(NUM_SIZE_CLUSTER).cuda()[
+            size_class_label.squeeze().long()]
+        mean_sizes = torch.from_numpy(g_mean_size_arr)\
+            .float().view(1, NUM_SIZE_CLUSTER, 3).cuda()  # (1,NS,3)
+        size_label = mean_sizes + size_residual_label.view(bs, 1, 3)
+        size_label = torch.sum(
+            scls_onehot.view(bs, NUM_SIZE_CLUSTER, 1).float() * size_label, axis=[1])
+
+        heading_bin_centers = torch.from_numpy(
+            np.arange(0, np.pi, np.pi / NUM_HEADING_BIN)).float().cuda()
+        heading_label = heading_residual_label.view(bs, 1) + \
+            heading_bin_centers.view(1, NUM_HEADING_BIN)
+        heading_label = torch.sum(hcls_onehot.float() * heading_label, 1)
+        corners_3d_gt = get_box3d_corners_helper(
+            center_label, heading_label, size_label)
+        corners_2d_gt = corners_3d_gt[:, 4:8, :2]
+
+        center_2d_label = center_label[:, :2]
+        center_2d_label = center_2d_label.unsqueeze(2)  # (bs,4,1)
+        center_2d_norm = torch.norm(center_2d_label, dim=1)
+        projection_value_label = (corners_2d_gt @ center_2d_label).squeeze()
+        projection_value_label = projection_value_label / center_2d_norm
+        p_max_label = torch.max(projection_value_label, dim=1).values
+        p_min_label = torch.min(projection_value_label, dim=1).values
+        std_label = (p_max_label - p_min_label) / 4
+        mean_label = (p_max_label + p_min_label) / 2
+
+        pc_xy = point_cloud.permute(0, 2, 1)
+        pc_xy = pc_xy[:, :, :2]
+        projection_value_pc = (pc_xy @ center_2d_label).squeeze()
+        projection_value_pc = projection_value_pc / center_2d_norm
+        p_max_pc = torch.max(projection_value_pc, dim=1).values
+        p_min_pc = torch.min(projection_value_pc, dim=1).values
+
+        std_pc = torch.std(projection_value_pc, dim=1, keepdim=True)
+        mean_pc = torch.mean(projection_value_pc, dim=1, keepdim=True)
+
+        std_dist = torch.norm(std_label.unsqueeze(1) - std_pc, dim=1)
+        std_loss = huber_loss(std_dist, delta=1.0)
+
+        mean_dist = torch.norm(mean_label.unsqueeze(1) - mean_pc, dim=1)
+        mean_loss = huber_loss(mean_dist, delta=1.0)
+
+        delta_norm = torch.norm(x_delta, dim=[1, 2])
+        delta_norm_loss = self.delta_norm_loss_weight * \
+            huber_loss(delta_norm, delta=1.0)
+        total_loss = center_loss + std_loss + mean_loss + delta_norm_loss
+        return 0.2 * total_loss
+
+
 class PointNetLoss(nn.Module):
     def __init__(self):
         super(PointNetLoss, self).__init__()
@@ -166,7 +235,7 @@ class PointNetLoss(nn.Module):
                 heading_residual_normalized, heading_residual,
                 heading_class_label, heading_residual_label,
                 size_residual_normalized, size_residual,
-                size_class_label, size_residual_label, mask_xyz_mean,
+                size_class_label, size_residual_label, mask_xyz_mean, transformerloss,
                 corner_loss_weight=0, box_loss_weight=10):
         """_summary_
 
@@ -222,10 +291,10 @@ class PointNetLoss(nn.Module):
 
         # Size Loss
         hcls_onehot = torch.eye(NUM_HEADING_BIN).cuda()[
-            heading_class_label.squeeze().long()]
+            heading_class_label.squeeze(-1).long()]
 
         scls_onehot = torch.eye(NUM_SIZE_CLUSTER).cuda()[
-            size_class_label.squeeze().long()]
+            size_class_label.squeeze(-1).long()]
 
         scls_onehot_repeat = scls_onehot.unsqueeze(2).repeat(1, 1, 3)
 
@@ -250,8 +319,20 @@ class PointNetLoss(nn.Module):
         # Heading Loss
         heading_residual_label_normalized = heading_residual_label / \
             (np.pi / NUM_HEADING_BIN)
-        heading_residual_normalized_dist = torch.norm(
+
+        heading_mask = size_class_label == 0
+        heading_mask = torch.where(
+            heading_mask, torch.tensor(1), torch.tensor(0))
+        heading_residual_normalized_v1 = heading_residual_normalized + heading_mask * 1 / 2
+        mask = heading_residual_normalized_v1 > 1
+        heading_residual_normalized_v1 = heading_residual_normalized_v1 - mask.int()
+
+        heading_residual_normalized_dist_v1 = torch.norm(
+            heading_residual_label_normalized - heading_residual_normalized_v1, dim=1)
+        heading_residual_normalized_dist_v0 = torch.norm(
             heading_residual_label_normalized - heading_residual_normalized, dim=1)
+        heading_residual_normalized_dist = torch.min(heading_residual_normalized_dist_v0,
+                                                     heading_residual_normalized_dist_v1)
         heading_loss = huber_loss(heading_residual_normalized_dist, delta=1.0)
 
         # Corner Loss
@@ -296,7 +377,7 @@ class PointNetLoss(nn.Module):
             (loc_size_label, heading_residual), dim=-1)
         loc_size_angle = loc_size_angle.unsqueeze(1)
         iou_loss, _ = cal_diou(loc_size_angle_label, loc_size_angle)
-        iou_value_loss = huber_loss(iou_loss.squeeze())
+        iou_value_loss = 0 * huber_loss(iou_loss.squeeze())
 
         total_loss = box_loss_weight * (center_loss +
                                         iou_value_loss +
@@ -304,6 +385,7 @@ class PointNetLoss(nn.Module):
                                         heading_loss +
                                         size_residual_loss +
                                         stage1_center_loss +
+                                        transformerloss +
                                         corner_loss_weight * corners_loss)
 
         losses = {
@@ -314,6 +396,7 @@ class PointNetLoss(nn.Module):
             'stage1_center_loss': box_loss_weight * stage1_center_loss,
             'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
             'mask_center_loss': box_loss_weight * mask_center_loss,
-            'heading_residual_normalized_loss': box_loss_weight * heading_loss
+            'heading_residual_normalized_loss': box_loss_weight * heading_loss,
+            'transformer_loss': box_loss_weight * transformerloss
         }
         return losses
