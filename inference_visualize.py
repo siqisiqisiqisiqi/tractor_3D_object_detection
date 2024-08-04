@@ -216,8 +216,8 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    # result_path = f"{save_path}/0731-1640/best.pt"
-    result_path = f"{save_path}/0802-1711/best.pt"
+    result_path = f"{save_path}/0804-1209/best.pt"
+    # result_path = f"{save_path}/0804-1215/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
@@ -237,8 +237,11 @@ def main():
         features = features.to(device, dtype=torch.float)
 
         # for debug
-        if idex == 21:
+        if idex == 36:
+            print(image_dir[0])
             print("test")
+            # break
+
         with torch.no_grad():
             losses, metrics = model(features, one_hot, data_dicts_var)
 
@@ -254,8 +257,6 @@ def main():
                              'size loss': size_loss, 'heading loss': heading_loss,
                              'transform loss': transform_loss, 'iou3d': iou3d}
         corners = metrics['corners']
-        print(idex)
-        print(evaluation_metric)
 
         k = visaulization(image_dir[0], corners, evaluation_metric, idex)
         if k == ord("q"):

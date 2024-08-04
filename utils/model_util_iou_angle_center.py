@@ -215,15 +215,15 @@ class TransformerLoss(nn.Module):
         mean_pc = torch.mean(projection_value_pc, dim=1, keepdim=True)
 
         std_dist = torch.norm(std_label.unsqueeze(1) - std_pc, dim=1)
-        std_loss = huber_loss(std_dist, delta=1.0)
+        x_std_loss = huber_loss(std_dist, delta=1.0)
 
         mean_dist = torch.norm(mean_label.unsqueeze(1) - mean_pc, dim=1)
-        mean_loss = huber_loss(mean_dist, delta=1.0)
+        x_mean_loss = huber_loss(mean_dist, delta=1.0)
 
         delta_norm = torch.norm(x_delta, dim=[1, 2])
         delta_norm_loss = self.delta_norm_loss_weight * \
             huber_loss(delta_norm, delta=1.0)
-        total_loss = center_loss + std_loss + mean_loss + delta_norm_loss
+        total_loss = center_loss + x_std_loss + x_mean_loss + delta_norm_loss
         return 0.2 * total_loss
 
 
@@ -236,7 +236,7 @@ class PointNetLoss(nn.Module):
                 heading_class_label, heading_residual_label,
                 size_residual_normalized, size_residual,
                 size_class_label, size_residual_label, mask_xyz_mean, transformerloss,
-                corner_loss_weight=0, box_loss_weight=10):
+                corner_loss_weight=1, box_loss_weight=10):
         """_summary_
 
         Parameters
@@ -314,7 +314,7 @@ class PointNetLoss(nn.Module):
         predicted_size_residual = predicted_size_residual_normalized_dist * mean_size_label
         size_residual_dist = torch.norm(size_residual_label -
                                         predicted_size_residual, dim=1)
-        size_residual_loss = huber_loss(size_residual_dist, delta=1.0)
+        size_residual_loss = huber_loss(size_residual_dist, delta=2.0)
 
         # Heading Loss
         heading_residual_label_normalized = heading_residual_label / \
