@@ -134,6 +134,9 @@ class StereoCustomDataset(Dataset):
         pcd = o3d.io.read_point_cloud(self.pc_list[index])
         pc_in_numpy = np.asarray(pcd.points)
         centroid_point = np.sum(pc_in_numpy, 0) / len(pc_in_numpy)
+
+        color_in_numpy = np.asarray(pcd.colors)
+
         pc_name = self.pc_list[index].split("/")[-1].split("_")
         label_dir = f"{self.label_path}/{pc_name[0]}.json"
         pc_class = pc_name[4].split(".")[0]
@@ -157,6 +160,7 @@ class StereoCustomDataset(Dataset):
             print("Can't find labels!!!!!!!")
         label = d['objects'][min_idx]
         pc_in_numpy = pc_in_numpy
+        pc_in_numpy = np.concatenate((pc_in_numpy, color_in_numpy), axis=1)
         if self.DS:
             pc_in_numpy = self.downsample(pc_in_numpy, NUM_OBJECT_POINT)
         # if self.NORMAL:

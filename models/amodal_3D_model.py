@@ -34,22 +34,25 @@ class PointNetEstimation(nn.Module):
             Number of the object type, by default 1
         """
         super(PointNetEstimation, self).__init__()
-        self.conv1 = nn.Conv1d(3, 128, 1)
-        self.conv2 = nn.Conv1d(128, 128, 1)
-        self.conv3 = nn.Conv1d(128, 256, 1)
-        self.conv4 = nn.Conv1d(256, 512, 1)
-        self.dropout1 = nn.Dropout(0.2)
-        self.dropout2 = nn.Dropout(0.2)
-        self.dropout3 = nn.Dropout(0.2)
-        self.dropout4 = nn.Dropout(0.2)
-        self.bn1 = nn.BatchNorm1d(128)
+        self.conv1 = nn.Conv1d(3, 64, 1)
+        self.conv2 = nn.Conv1d(64, 128, 1)
+        self.conv3 = nn.Conv1d(128, 128, 1)
+        self.conv4 = nn.Conv1d(128, 256, 1)
+        self.conv5 = nn.Conv1d(256, 512, 1)
+        self.dropout = nn.Dropout(0.2)
+        self.bn1 = nn.BatchNorm1d(64)
         self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(256)
-        self.bn4 = nn.BatchNorm1d(512)
+        self.bn3 = nn.BatchNorm1d(128)
+        self.bn4 = nn.BatchNorm1d(256)
+        self.bn5 = nn.BatchNorm1d(512)
 
         self.n_classes = n_classes
 
-        self.fc1 = nn.Linear(512 + n_classes + 3, 512)
+        self.class_fc = nn.Linear(n_classes, 32)
+        self.dist_fc = nn.Linear(3, 32)
+        self.fcbn_dist = nn.BatchNorm1d(32)
+
+        self.fc1 = nn.Linear(512 + 32 + 32, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 64)
         self.fc4 = nn.Linear(64, 3 + NUM_HEADING_BIN *
@@ -79,15 +82,20 @@ class PointNetEstimation(nn.Module):
         bs = pts.size()[0]
         n_pts = pts.size()[2]
 
-        out1 = self.dropout1(F.relu(self.bn1(self.conv1(pts))))  # bs,128,n
-        out2 = self.dropout2(F.relu(self.bn2(self.conv2(out1))))  # bs,128,n
-        out3 = self.dropout3(F.relu(self.bn3(self.conv3(out2))))  # bs,256,n
-        out4 = self.dropout4(F.relu(self.bn4(self.conv4(out3))))  # bs,512,n
-        global_feat = torch.max(out4, 2, keepdim=False)[0]  # bs,512
+        out1 = self.dropout(F.relu(self.bn1(self.conv1(pts))))  # bs,128,n
+        out2 = self.dropout(F.relu(self.bn2(self.conv2(out1))))  # bs,128,n
+        out3 = self.dropout(F.relu(self.bn3(self.conv3(out2))))  # bs,256,n
+        out4 = self.dropout(F.relu(self.bn4(self.conv4(out3))))  # bs,512,n
+        out5 = self.dropout(F.relu(self.bn5(self.conv5(out4))))
+        global_feat = torch.max(out5, 2, keepdim=False)[0]  # bs,512
+
+        expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
+        one_hot_embed = F.relu(self.class_fc(expand_one_hot_vec))
+        center_embed = F.relu(self.fcbn_dist(self.dist_fc(stage1_center)))
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         expand_global_feat = torch.cat(
-            [global_feat, expand_one_hot_vec, stage1_center], 1)  # bs,515
+            [global_feat, one_hot_embed, center_embed], 1)  # bs,515
         x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
         x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
         x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
@@ -261,9 +269,9 @@ class Amodal3DModel(nn.Module):
                     one_hot.detach().cpu().numpy(),
                     size_residual.detach().cpu().numpy(),
                     box3d_center_label.detach().cpu().numpy(),
-                    heading_class_label.detach().cpu().numpy().squeeze(),
-                    heading_residual_label.detach().cpu().numpy().squeeze(),
-                    size_class_label.detach().cpu().numpy().squeeze(),
+                    heading_class_label.detach().cpu().numpy().squeeze(-1),
+                    heading_residual_label.detach().cpu().numpy().squeeze(-1),
+                    size_class_label.detach().cpu().numpy().squeeze(-1),
                     size_residual_label.detach().cpu().numpy())
             metrics = {
                 'corners': corners,

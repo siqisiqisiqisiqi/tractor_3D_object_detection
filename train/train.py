@@ -17,6 +17,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from models.amodal_3D_model_transformer import Amodal3DModel
+# from models.amodal_3D_model_transformer_v2 import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
@@ -164,7 +165,7 @@ def train():
         optimizer, step_size=LR_STEPS, gamma=GAMMA)
 
     early_stopping = EarlyStopping(
-        patience=30, verbose=True, path=f"{result_path}/early_stopping.pt")
+        patience=50, verbose=True, path=f"{result_path}/early_stopping.pt")
 
     best_iou3d = 0.0
     train_total_losses_data = []
@@ -259,7 +260,7 @@ def train():
             }
         # early_stopping needs the validation loss to check if it has decresed
         early_stopping(test_losses['total_loss'], model)
-        if early_stopping.early_stop:
+        if early_stopping.early_stop and epoch > 200:
             print("Early stopping")
             break
 

@@ -216,16 +216,18 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"{save_path}/0804-1209/best.pt"
-    # result_path = f"{save_path}/0804-1215/best.pt"
+    result_path = f"{save_path}/0805-1713/best.pt"
+    # result_path = f"{save_path}/0805-12020
+    #  /best.pt"
+
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
     BATCH_SIZE = 1
-    pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
-    label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
+    pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "train")
+    label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
     test_dataset = StereoCustomDataset(pc_test_path, label_test_path)
     test_dataloader = DataLoader(
         test_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1, drop_last=True)
@@ -237,10 +239,10 @@ def main():
         features = features.to(device, dtype=torch.float)
 
         # for debug
-        if idex == 36:
-            print(image_dir[0])
-            print("test")
-            # break
+        # if idex == 11:
+        #     print(image_dir[0])
+        #     print("test")
+        # break
 
         with torch.no_grad():
             losses, metrics = model(features, one_hot, data_dicts_var)
@@ -251,7 +253,10 @@ def main():
         ).cpu().numpy()
         size_loss = losses['size_residual_normalized_loss'].detach(
         ).cpu().numpy()
-        transform_loss = losses['transformer_loss'].detach().cpu().numpy()
+        try:
+            transform_loss = losses['transformer_loss'].detach().cpu().numpy()
+        except:
+            transform_loss = 0
         iou3d = metrics['iou3d']
         evaluation_metric = {'total loss': total_loss, 'center loss': center_loss,
                              'size loss': size_loss, 'heading loss': heading_loss,

@@ -212,10 +212,23 @@ class PointNetLoss(nn.Module):
         stage1_center_loss = huber_loss(stage1_center_dist, delta=1.0)
 
         # Heading Loss
-        heading_class_loss = F.nll_loss(F.log_softmax(heading_scores, dim=1),
-                                        heading_class_label.squeeze().long())  # tensor(2.4505, grad_fn=<NllLossBackward>)
+        heading_class_loss_v1 = F.nll_loss(F.log_softmax(heading_scores, dim=1),
+                                           heading_class_label.squeeze(-1).long(), reduction='none')  # tensor(2.4505, grad_fn=<NllLossBackward>)
+
+        heading_mask = size_class_label == 0
+        heading_mask = torch.where(
+            heading_mask, torch.tensor(1), torch.tensor(0))
+        heading_class_label_flip = heading_class_label + 2 * heading_mask
+        mask = heading_class_label_flip > 3
+        heading_class_label_flip = heading_class_label_flip - 4 * mask.int()
+        heading_class_loss_v2 = F.nll_loss(F.log_softmax(heading_scores, dim=1),
+                                           heading_class_label_flip.squeeze(-1).long(), reduction='none')
+        heading_class_loss = torch.min(
+            heading_class_loss_v1, heading_class_loss_v2)
+        heading_class_loss = torch.mean(heading_class_loss)
+
         hcls_onehot = torch.eye(NUM_HEADING_BIN).cuda()[
-            heading_class_label.squeeze().long()]  # 32,12
+            heading_class_label.squeeze(-1).long()]  # 32,12
         heading_residual_normalized_label = \
             heading_residual_label / (np.pi / NUM_HEADING_BIN)  # 32,
         heading_residual_normalized_dist = torch.sum(
@@ -229,7 +242,7 @@ class PointNetLoss(nn.Module):
         #                              size_class_label.squeeze().long())  # tensor(2.0240, grad_fn=<NllLossBackward>)
 
         scls_onehot = torch.eye(NUM_SIZE_CLUSTER).cuda()[
-            size_class_label.squeeze().long()]  # 32,8
+            size_class_label.squeeze(-1).long()]  # 32,8
         # 32,8,3
         scls_onehot_repeat = scls_onehot.view(-1,
                                               NUM_SIZE_CLUSTER, 1).repeat(1, 1, 3)

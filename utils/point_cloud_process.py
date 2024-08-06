@@ -10,7 +10,7 @@ def point_cloud_process(point_cloud: ndarray) -> Tuple[ndarray, ndarray]:
     ----------
     point_cloud : ndarray
         The point cloud in the world coordinate system
-        size [batchsize, point number, 3]
+        size [batchsize, 3, point number]
 
     Returns
     -------
