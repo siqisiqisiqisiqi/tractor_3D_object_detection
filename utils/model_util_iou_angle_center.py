@@ -256,7 +256,7 @@ class TransformerLoss(nn.Module):
 
 
 class PointNetLoss(nn.Module):
-    def __init__(self, hyper_parameter=(1, 1, 1)):
+    def __init__(self, hyper_parameter=[1]):
         super(PointNetLoss, self).__init__()
         self.p = hyper_parameter
 
@@ -265,7 +265,7 @@ class PointNetLoss(nn.Module):
                 heading_class_label, heading_residual_label,
                 size_residual_normalized, size_residual,
                 size_class_label, size_residual_label, mask_xyz_mean, transformerloss,
-                corner_loss_weight=0.2, box_loss_weight=10):
+                corner_loss_weight=0.1, box_loss_weight=10):
         """_summary_
 
         Parameters
@@ -411,14 +411,14 @@ class PointNetLoss(nn.Module):
             (loc_size_label, heading_residual), dim=-1)
         loc_size_angle = loc_size_angle.unsqueeze(1)
         iou_loss, _ = cal_diou(loc_size_angle_label, loc_size_angle)
-        iou_value_loss = 0 * huber_loss(iou_loss.squeeze())
+        iou_value_loss = huber_loss(iou_loss.squeeze())
 
         total_loss = box_loss_weight * (0 * center_loss +
-                                        self.p[0] * 1 / 4 * nomalize_center_loss +
-                                        iou_value_loss +
+                                        0.04 * nomalize_center_loss +
+                                        0 * iou_value_loss +
                                         # size_residual_normalized_loss +
-                                        self.p[2] * heading_loss +
-                                        self.p[1] * size_residual_loss +
+                                        2.0 * size_residual_loss +
+                                        0.5 * heading_loss +
                                         stage1_center_loss +
                                         transformerloss +
                                         corner_loss_weight * corners_loss)

@@ -138,7 +138,7 @@ def main():
     #     image_path = f"{PARENT_DIR}/datasets/images/Image_{i}.jpg"
     #     image_path_list.append(image_path)
     image_path_list = glob.glob(
-        f"{PARENT_DIR}/datasets/images/test/Image_259.jpg")
+        f"{PARENT_DIR}/datasets/images/test/Image_*.jpg")
     for data in image_path_list:
         img_path = data
         label_dicts = point_cloud_input(img_path)

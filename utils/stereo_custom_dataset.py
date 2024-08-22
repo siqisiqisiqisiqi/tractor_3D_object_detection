@@ -26,6 +26,11 @@ label_train_path = os.path.join(PARENT_DIR, "datasets", "labels", "train")
 pc_test_path = os.path.join(PARENT_DIR, "datasets", "pointclouds", "test")
 label_test_path = os.path.join(PARENT_DIR, "datasets", "labels", "test")
 
+SEED = 1
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
 
 class StereoCustomDataset(Dataset):
     def __init__(self, pc_path: str, label_path: str, downsample=True, normalization=True):

@@ -143,7 +143,7 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"{save_path}/0802-1143/best.pt"
+    result_path = f"{save_path}/0809-1550/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)

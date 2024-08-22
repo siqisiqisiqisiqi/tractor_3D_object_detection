@@ -28,8 +28,8 @@ from models.helpers import GenericMLP
 from src.params import *
 
 
-class PointNetEstimation(nn.Module):
-    def __init__(self, n_classes: int = 3):
+class PointNetEstimationv2(nn.Module):
+    def __init__(self, n_classes: int = 3, conv_dim: list = [64, 128, 128, 256, 512]):
         """Model estimate the 3D bounding box
 
         Parameters
@@ -37,18 +37,16 @@ class PointNetEstimation(nn.Module):
         n_classes : int, optional
             Number of the object type, by default 1
         """
-        super(PointNetEstimation, self).__init__()
-        self.conv1 = nn.Conv1d(3, 64, 1)
-        self.conv2 = nn.Conv1d(64, 128, 1)
-        self.conv3 = nn.Conv1d(128, 128, 1)
-        self.conv4 = nn.Conv1d(128, 256, 1)
-        self.conv5 = nn.Conv1d(256, 512, 1)
-        self.dropout = nn.Dropout(0.2)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(128)
-        self.bn4 = nn.BatchNorm1d(256)
-        self.bn5 = nn.BatchNorm1d(512)
+        # conv_dim = [64, 128, 256, 512, 1024]
+        super(PointNetEstimationv2, self).__init__()
+        preencoder_mpl_dims = [0, 64, 128, 256, 512]
+        self.preencoder = PointnetSAModuleVotes(
+            radius=0.2,
+            nsample=32,
+            npoint=256,
+            mlp=preencoder_mpl_dims,
+            normalize_xyz=True,
+        )
 
         self.n_classes = n_classes
 
@@ -56,7 +54,81 @@ class PointNetEstimation(nn.Module):
         self.dist_fc = nn.Linear(3, 64)
         self.fcbn_dist = nn.BatchNorm1d(64)
 
-        self.fc1 = nn.Linear(512 + 64 + 64, 512)
+        self.fc1 = nn.Linear(conv_dim[4] + 64 + 64, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 64)
+        self.fc4 = nn.Linear(64, 3 + 1 + 1 * 3)  # center, angle, size
+        self.fcbn1 = nn.BatchNorm1d(512)
+        self.fcbn2 = nn.BatchNorm1d(256)
+        self.fcbn3 = nn.BatchNorm1d(64)
+        self.dropout12 = nn.Dropout(0.2)
+        self.dropout13 = nn.Dropout(0.2)
+
+    def forward(self, pts: ndarray, one_hot_vec: ndarray, stage1_center: ndarray) -> tensor:
+        """
+        Parameters
+        ----------
+        pts : ndarray
+            point cloud 
+            size bsx3xnum_point
+        one_hot_vec : ndarray
+            one hot vector type 
+            size bsxn_classes
+
+        Returns
+        -------
+        tensor
+            size 3x3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
+        """
+        bs = pts.size()[0]
+
+        pointcloud = pts.permute(0, 2, 1)
+        _, pre_enc_features, _ = self.preencoder(pointcloud)
+        global_feat = torch.max(pre_enc_features, 2, keepdim=False)[
+            0]  # bs,512
+
+        expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
+        one_hot_embed = F.relu(self.class_fc(expand_one_hot_vec))
+        center_embed = F.relu(self.fcbn_dist(self.dist_fc(stage1_center)))
+        expand_global_feat = torch.cat(
+            [global_feat, one_hot_embed, center_embed], 1)  # bs,518
+        x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
+        x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
+        x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
+        box_pred = self.fc4(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
+        return box_pred
+
+
+class PointNetEstimation(nn.Module):
+    def __init__(self, n_classes: int = 3, conv_dim: list = [64, 128, 128, 256, 512]):
+        """Model estimate the 3D bounding box
+
+        Parameters
+        ----------
+        n_classes : int, optional
+            Number of the object type, by default 1
+        """
+        # conv_dim = [64, 128, 256, 512, 1024]
+        super(PointNetEstimation, self).__init__()
+        self.conv1 = nn.Conv1d(3, conv_dim[0], 1)
+        self.conv2 = nn.Conv1d(conv_dim[0], conv_dim[1], 1)
+        self.conv3 = nn.Conv1d(conv_dim[1], conv_dim[2], 1)
+        self.conv4 = nn.Conv1d(conv_dim[2], conv_dim[3], 1)
+        self.conv5 = nn.Conv1d(conv_dim[3], conv_dim[4], 1)
+        self.dropout = nn.Dropout(0.2)
+        self.bn1 = nn.BatchNorm1d(conv_dim[0])
+        self.bn2 = nn.BatchNorm1d(conv_dim[1])
+        self.bn3 = nn.BatchNorm1d(conv_dim[2])
+        self.bn4 = nn.BatchNorm1d(conv_dim[3])
+        self.bn5 = nn.BatchNorm1d(conv_dim[4])
+
+        self.n_classes = n_classes
+
+        self.class_fc = nn.Linear(n_classes, 64)
+        self.dist_fc = nn.Linear(3, 64)
+        self.fcbn_dist = nn.BatchNorm1d(64)
+
+        self.fc1 = nn.Linear(conv_dim[4] + 64 + 64, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 64)
         self.fc4 = nn.Linear(64, 3 + 1 + 1 * 3)  # center, angle, size
@@ -118,6 +190,7 @@ class STNxyz(nn.Module):
         self.conv2 = torch.nn.Conv1d(128, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 256, 1)
         # self.conv4 = torch.nn.Conv1d(256, 512, 1)
+
         self.fc1 = nn.Linear(256 + n_classes, 256)
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 3)
@@ -154,7 +227,9 @@ class STNxyz(nn.Module):
         x = F.relu(self.bn2(self.conv2(x)))  # bs,128,n
         x = F.relu(self.bn3(self.conv3(x)))  # bs,256,n
         x = torch.max(x, 2)[0]  # bs,256
+
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
+
         x = torch.cat([x, expand_one_hot_vec], 1)
         x = F.relu(self.fcbn1(self.fc1(x)))  # bs,256
         x = F.relu(self.fcbn2(self.fc2(x)))  # bs,128
@@ -262,12 +337,13 @@ class Amodal3DModel(nn.Module):
         self.n_channel = n_channel
         self.transformer = TransformerBasedFilter()
         self.STN = STNxyz(n_classes=3)
-        self.est = PointNetEstimation(n_classes=3)
-        self.Loss = PointNetLoss()
+        self.est = PointNetEstimationv2(n_classes=3)
+        # self.est = PointNetEstimation(n_classes=3)
         if hyper_parameter is not None:
             self.Loss = PointNetLoss(hyper_parameter=hyper_parameter)
         else:
-            self.transformer_loss = TransformerLoss()
+            self.Loss = PointNetLoss()
+        self.transformer_loss = TransformerLoss()
 
     def forward(self, features: ndarray, one_hot: ndarray, label_dicts: dict = {}):
         """Amodal3DModel forward
@@ -375,7 +451,9 @@ class Amodal3DModel(nn.Module):
                 'corners': corners,
                 'iou2d': iou2ds.mean(),
                 'iou3d': iou3ds.mean(),
-                'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs
+                'iou3d_0.25': np.sum(iou3ds >= 0.25) / bs,
+                'iou3d_0.5': np.sum(iou3ds >= 0.5) / bs,
+                'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs,
             }
             return losses, metrics
 

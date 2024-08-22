@@ -216,7 +216,7 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"{save_path}/0805-1713/best.pt"
+    result_path = f"{save_path}/0809-1 /best.pt"
     # result_path = f"{save_path}/0805-12020
     #  /best.pt"
 
@@ -239,10 +239,10 @@ def main():
         features = features.to(device, dtype=torch.float)
 
         # for debug
-        # if idex == 11:
-        #     print(image_dir[0])
-        #     print("test")
-        # break
+        if idex == 25:
+            print(image_dir[0])
+            print("test")
+            # break
 
         with torch.no_grad():
             losses, metrics = model(features, one_hot, data_dicts_var)
