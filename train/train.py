@@ -74,7 +74,9 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
     test_metrics = {
         'iou2d': 0.0,
         'iou3d': 0.0,
-        'iou3d_0.7': 0.0,
+        'iou3d_0.25': 0.0,
+        'iou3d_0.5': 0.0,
+        'iou3d_0.7': 0.0
     }
 
     model.eval()
@@ -188,6 +190,8 @@ def train():
         train_metrics = {
             'iou2d': 0.0,
             'iou3d': 0.0,
+            'iou3d_0.25': 0.0,
+            'iou3d_0.5': 0.0,
             'iou3d_0.7': 0.0,
         }
         model.train()
@@ -249,24 +253,31 @@ def train():
             df.to_csv(savepath, index=True)
             print(f"Saved the .csv file as {savepath}")
 
-        if test_metrics['iou3d'] >= best_iou3d:
+        if test_metrics['iou3d'] >= best_iou3d and epoch > 100:
             best_iou3d = test_metrics['iou3d']
+            optimizer_state_dict = optimizer.state_dict()
             best_state = {
                 'epoch': epoch + 1,
                 'train_iou3d': train_metrics['iou3d'],
                 'test_iou3d': test_metrics['iou3d'],
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                'optimizer_state_dict': optimizer_state_dict,
             }
-        # early_stopping needs the validation loss to check if it has decresed
+            savepath = f"{result_path}/best.pt"
+            torch.save(best_state, savepath)
+            print(f"Saved the best epoch model as {savepath}")
+
+        # early_stopping needs the validation loss to check if it has decreased
         early_stopping(test_losses['total_loss'], model)
-        if early_stopping.early_stop and epoch > 200:
+        if epoch < 200:
+            early_stopping.early_stop = False
+        if early_stopping.early_stop:
             print("Early stopping")
             break
 
-    savepath = f"{result_path}/best.pt"
-    torch.save(best_state, savepath)
-    print(f"Saved the best epoch model as {savepath}")
+    # savepath = f"{result_path}/best.pt"
+    # torch.save(best_state, savepath)
+    # print(f"Saved the best epoch model as {savepath}")
 
     last_state = {
         'epoch': epoch + 1,

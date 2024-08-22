@@ -136,18 +136,27 @@ def train():
     strtime = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
     strtime = strtime[4:13]
 
-    result_path = f"{save_path}/{strtime}"
+    result_path = f"{save_path}/{strtime}_grid_search"
     isExist = os.path.exists(result_path)
     if not isExist:
         os.makedirs(result_path)
-    center_loss_weights = [0.2, 0.4, 0.6, 0.8, 1.0]
-    size_loss_weights = [0.2, 0.4, 0.6, 0.8, 1.0]
-    heading_loss_weights = [0.2, 0.4, 0.6, 0.8, 1.0]
-    hyper_parameter_list = list(itertools.product(
-        center_loss_weights, size_loss_weights, heading_loss_weights))
+    # center_w = [0.5, 0.8, 1, 1.2, 2.0]
+    # size_w = [0.5, 0.8, 1, 1.2, 2.0]
+    # heading_w = [0.5, 0.8, 1, 1.2, 2.0]
+    iou_heading_w = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1.0]
+    # hyper_parameter_list = list(itertools.product(
+    # center_w, size_w, heading_w))
+    hyper_parameter_list = list(itertools.product(iou_heading_w))
     iou3d_list = []
     index = 0
     for hyper_parameter in hyper_parameter_list:
+
+        np.random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.cuda.manual_seed_all(SEED)
+        random.seed(SEED)
+        torch.backends.cudnn.deterministic = True
+
         model = Amodal3DModel(hyper_parameter=hyper_parameter)
         model.to(device)
 
@@ -243,12 +252,15 @@ def train():
                     'test_iou2d': test_metrics['iou2d'],
                     'hyper_parameter': hyper_parameter,
                 }
-            iou3d_list.append(test_metrics['iou3d'])
             # early_stopping needs the validation loss to check if it has decresed
             early_stopping(test_losses['total_loss'], model)
+            if epoch < 200:
+                early_stopping.early_stop = False
             if early_stopping.early_stop and epoch > 200:
                 print("Early stopping")
                 break
+
+        iou3d_list.append(best_iou3d)
         index = index + 1
         savepath = f"{result_path}/index_{index}_hyper_parameter_{hyper_parameter}.json"
         with open(savepath, 'w') as json_file:

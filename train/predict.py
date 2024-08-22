@@ -73,7 +73,9 @@ def test(model: Amodal3DModel, loader: DataLoader) -> Tuple[dict, dict]:
     test_metrics = {
         'iou2d': 0.0,
         'iou3d': 0.0,
-        'iou3d_0.7': 0.0,
+        'iou3d_0.25': 0.0,
+        'iou3d_0.5': 0.0,
+        'iou3d_0.7': 0.0
     }
 
     test_n_batches = 0
@@ -159,15 +161,15 @@ def train():
     strtime = time.strftime('%Y%m%d-%H%M%S', time.localtime(time.time()))
     strtime = strtime[4:13]
 
-    result_path = f"{save_path}/{strtime}"
-    isExist = os.path.exists(result_path)
-    if not isExist:
-        os.makedirs(result_path)
+    # result_path = f"{save_path}/{strtime}"
+    # isExist = os.path.exists(result_path)
+    # if not isExist:
+    #     os.makedirs(result_path)
 
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"../results/0802-1032/best.pt"
+    result_path = f"{PARENT_DIR}/tractor_3D_object_detection/results/0819-1205/last.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
@@ -190,7 +192,7 @@ def train():
     test_total_losses_data = []
     train_save_dic = {}
     test_save_dic = {}
-    MAX_EPOCH = 5
+    MAX_EPOCH = 1
     for epoch in range(MAX_EPOCH):
         # train_losses = {
         #     'total_loss': 0.0,
@@ -244,14 +246,14 @@ def train():
         # train_total_losses_data.append(train_losses['total_loss'])
 
         test_losses, test_metrics = test(model, test_dataloader)
-        train_losses, train_metrics = test(model, train_dataloader)
+        # train_losses, train_metrics = test(model, train_dataloader)
         test_epoch_dic = combine_dicts_to_list(test_losses, test_metrics)
         test_save_dic = combine_dicts_to_list(test_save_dic, test_epoch_dic)
         print(
             f"Finished the {epoch} epoch test +++++++++++++++++++ Total test loss is {test_losses['total_loss']}")
-        print(
-            f"Finished the {epoch} epoch test +++++++++++++++++++ Total test loss is {train_losses['total_loss']}")
-        test_total_losses_data.append(test_losses['total_loss'])
+        # print(
+        # f"Finished the {epoch} epoch test +++++++++++++++++++ Total test loss is {train_losses['total_loss']}")
+        # test_total_losses_data.append(test_losses['total_loss'])
         # scheduler.step()
 
         # if scheduler.get_lr()[0] < MIN_LR:
