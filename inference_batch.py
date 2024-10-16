@@ -15,7 +15,7 @@ import glob
 import cv2
 from numpy.linalg import inv
 
-from models.amodal_3D_model_transformer import Amodal3DModel
+from models.amodal_3D_model_pointnet_plus import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 
@@ -143,13 +143,16 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"{save_path}/0809-1550/best.pt"
+    result_path = f"{save_path}/0819-1038/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
-    image_path_list = glob.glob(f"{PARENT_DIR}/datasets/images/test/Image_*")
+    # image_path_list = glob.glob(
+    #     f"{PARENT_DIR}/datasets/images/train/Image_115*")
+    image_path_list = glob.glob(
+        f"{PARENT_DIR}/datasets/images/train/Image_*")
     for data in image_path_list:
         img_path = data
         a = data.split("/")[-1]
@@ -165,7 +168,7 @@ def main():
             corners = model(features, categ)
             tok = time.time()
             inference_time = (tok - tik) / len(point_cloud_path_list)
-            # print(f"inference time is {inference_time}")
+            print(f"inference time is {inference_time}")
         k = visaulization(img_path, corners)
         # print(k)
         if k == ord("q"):

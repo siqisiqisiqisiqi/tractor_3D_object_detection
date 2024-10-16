@@ -16,8 +16,8 @@ from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from models.amodal_3D_model_transformer import Amodal3DModel
-# from models.amodal_3D_model_transformer_v2 import Amodal3DModel
+from models.amodal_3D_model_pointnet_plus import Amodal3DModel
+# from models.amodal_3D_model_transformer import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
 import itertools
 from utils.stereo_custom_dataset import StereoCustomDataset

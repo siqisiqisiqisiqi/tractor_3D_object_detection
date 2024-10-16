@@ -15,7 +15,7 @@ import random
 import cv2
 from numpy.linalg import inv
 
-from models.amodal_3D_model_transformer import Amodal3DModel
+from models.amodal_3D_model_pointnet_plus import Amodal3DModel
 # from models.amodal_3D_model import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from torch.utils.data import DataLoader
