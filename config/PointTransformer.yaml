@@ -1,0 +1,8 @@
+num_point: 1024
+nneighbor: 16
+input_dim: 9
+num_class: 3 # class 1 means good point, class 0 means bad point
+# nblocks: 4
+nblocks: 2
+transformer_dim: 256
+name: PointTransformer

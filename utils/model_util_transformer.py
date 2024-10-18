@@ -415,6 +415,9 @@ class PointNetLoss(nn.Module):
             (center - center_label) / mean_size_label, dim=1)
         nomalize_center_loss = huber_loss(normalize_center_dist, delta=2.0)
 
+        normalize_mask_dist = torch.norm((mask_xyz_mean - center_label)/mean_size_label, dim=1)
+        nomalize_mask_center_loss = huber_loss(normalize_mask_dist, delta=1.0)
+
         # Heading Loss
         heading_residual_label_normalized = heading_residual_label / \
             (np.pi / NUM_HEADING_BIN)
@@ -481,7 +484,7 @@ class PointNetLoss(nn.Module):
         total_loss = box_loss_weight * (0 * center_loss +
                                         0.04 * nomalize_center_loss +
                                         0 * iou_value_loss +
-                                        # size_residual_normalized_loss +
+                                        mask_center_loss +
                                         2.0 * size_residual_loss +
                                         0.5 * heading_loss +
                                         stage1_center_loss +

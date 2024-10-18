@@ -16,8 +16,7 @@ from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from models.amodal_3D_model_pointnet_plus import Amodal3DModel
-# from models.amodal_3D_model import Amodal3DModel
+from models.amodal_3D_model_transformer import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
 from src.params import *
 from src.pytorchtools import EarlyStopping
@@ -268,7 +267,7 @@ def train():
 
         # early_stopping needs the validation loss to check if it has decreased
         early_stopping(test_losses['total_loss'], model)
-        if epoch < 200:
+        if epoch < 250:
             early_stopping.early_stop = False
         if early_stopping.early_stop:
             print("Early stopping")
