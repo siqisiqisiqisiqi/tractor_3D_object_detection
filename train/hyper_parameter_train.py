@@ -143,10 +143,13 @@ def train():
     # center_w = [0.5, 0.8, 1, 1.2, 2.0]
     # size_w = [0.5, 0.8, 1, 1.2, 2.0]
     # heading_w = [0.5, 0.8, 1, 1.2, 2.0]
-    iou_heading_w = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1.0]
+    # iou_heading_w = [0.01, 0.05, 0.1, 0.2, 0.4, 0.8, 1.0]
     # hyper_parameter_list = list(itertools.product(
     # center_w, size_w, heading_w))
-    hyper_parameter_list = list(itertools.product(iou_heading_w))
+    learning_rate_w = [0.2, 1]
+    delta_norm_w = [0.2, 1, 2]
+    center_w = [0.2, 1, 2]
+    hyper_parameter_list = list(itertools.product(learning_rate_w, delta_norm_w, center_w))
     iou3d_list = []
     index = 0
     for hyper_parameter in hyper_parameter_list:
@@ -162,7 +165,7 @@ def train():
 
         # define the optimizer and scheduler
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=BASE_LR,
+            model.parameters(), lr=hyper_parameter[0] * BASE_LR,
             betas=(0.9, 0.999), eps=1e-08,
             weight_decay=WEIGHT_DECAY)
 
@@ -170,7 +173,7 @@ def train():
             optimizer, step_size=LR_STEPS, gamma=GAMMA)
 
         early_stopping = EarlyStopping(
-            patience=50, verbose=True, path=f"{result_path}/early_stopping.pt")
+            patience=30, verbose=True, path=f"{result_path}/early_stopping.pt")
 
         best_iou3d = 0.0
         train_total_losses_data = []

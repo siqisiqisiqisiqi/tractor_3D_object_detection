@@ -1,6 +1,7 @@
 import sys
 import os
 import re
+import json
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
@@ -17,6 +18,7 @@ from numpy.linalg import inv
 
 from models.amodal_3D_model_pointnet_plus import Amodal3DModel
 from utils.stereo_custom_dataset import StereoCustomDataset
+from utils.compute_box3d_iou import get_3d_box
 from src.params import *
 
 save_path = os.path.join(BASE_DIR, "results")
@@ -42,6 +44,31 @@ def downsample(pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
     idx = np.random.randint(pc_num, size=num_object_points)
     downsample_pc = pc_in_numpy[idx, :]
     return downsample_pc
+
+
+def labeled_input(image_path):
+    a = image_path.split("/")[-1]
+    num = re.findall(r'\d+', a)
+    label_dir = f'../datasets/labels/train/Pointcloud{num[0]}.json'
+    with open(label_dir) as f:
+        d = json.load(f)
+    label_dicts = d['objects']
+    return label_dicts
+
+
+def label2corners(label_dicts):
+    corners = []
+    item_num = len(label_dicts)
+    for i in range(item_num):
+        label_dict = label_dicts[i]
+        box_size = label_dict['dimensions']
+        box_size = (box_size['length'], box_size['width'], box_size['height'])
+        center = label_dict['centroid']
+        center = (center['x'], center['y'], center['z'])
+        heading_angle = label_dict['rotations']['z']
+        corner = get_3d_box(box_size, heading_angle, center)
+        corners.append(corner)
+    return corners
 
 
 def point_cloud_input(pt_path_list):
@@ -72,7 +99,7 @@ def point_cloud_class(pt_path_list):
     return one_hot
 
 
-def visaulization(img_dir: str, corners: list):
+def visaulization(img: ndarray, corners: list, label=False):
     """Draw the 3D bounding box in the 2D image
 
     Parameters
@@ -86,9 +113,12 @@ def visaulization(img_dir: str, corners: list):
     # load the camera parameters
     with np.load('./camera_params/camera_param.npz') as X:
         mtx, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255),
-              (0, 255, 255), (255, 0, 255), (125, 125, 0)]
-    img = cv2.imread(img_dir)
+    if label:
+        # colors = [(190, 190, 190)]
+        colors = [(50, 50, 50)]
+    else:
+        colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255),
+                  (0, 255, 255), (255, 0, 255), (125, 125, 0)]
     for index in range(len(corners)):
         corner_world = corners[index]
         corner_camera = inv(Mat) @ (corner_world.T + tvecs)
@@ -101,7 +131,7 @@ def visaulization(img_dir: str, corners: list):
         pt1 = corner1.reshape((-1, 1, 2))
         pt2 = corner2.reshape((-1, 1, 2))
 
-        color = colors[index]
+        color = colors[index % len(colors)]
         thickness = 2
         cv2.polylines(img, [pt1], True, color, thickness)
         cv2.polylines(img, [pt2], True, color, thickness)
@@ -127,13 +157,14 @@ def visaulization(img_dir: str, corners: list):
         alpha = 1
         beta = 0.55
         gamma = 0
+        if label:
+            continue
         img = cv2.addWeighted(img, alpha, zeros_mask, beta, gamma)
-    cv2.imshow("Image", img)
-    k = cv2.waitKey(0)
-    return k
+    return img
 
 
 def main():
+
     is_cuda = torch.cuda.is_available()
     if is_cuda:
         device = torch.device("cuda")
@@ -143,16 +174,18 @@ def main():
     model = Amodal3DModel()
     model.to(device)
 
-    result_path = f"{save_path}/0819-1038/best.pt"
+    result_path = f"{save_path}/0819-1205/best.pt"
     result = torch.load(result_path)
     model_state_dict = result['model_state_dict']
     model.load_state_dict(model_state_dict)
     model.eval()
 
-    # image_path_list = glob.glob(
-    #     f"{PARENT_DIR}/datasets/images/train/Image_115*")
     image_path_list = glob.glob(
-        f"{PARENT_DIR}/datasets/images/train/Image_*")
+        f"{PARENT_DIR}/datasets/images/train/Image_203*")
+    # image_path_list = glob.glob(
+    #     f"{PARENT_DIR}/datasets/images/test/Image_*")
+
+    t_total = 0
     for data in image_path_list:
         img_path = data
         a = data.split("/")[-1]
@@ -168,11 +201,22 @@ def main():
             corners = model(features, categ)
             tok = time.time()
             inference_time = (tok - tik) / len(point_cloud_path_list)
+            t_total += inference_time
             print(f"inference time is {inference_time}")
-        k = visaulization(img_path, corners)
-        # print(k)
+
+        img = cv2.imread(img_path)
+        img = visaulization(img, corners)
+
+        label_dicts = labeled_input(img_path)
+        label_corners = label2corners(label_dicts)
+        img = visaulization(img, label_corners, True)
+
+        cv2.imshow("Image", img)
+        k = cv2.waitKey(0)
         if k == ord("q"):
+            cv2.destroyAllWindows()
             break
+    print(f"average time is {t_total/len(image_path_list)}")
     print("Completed the inference!")
 
 

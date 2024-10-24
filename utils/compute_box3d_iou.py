@@ -155,3 +155,20 @@ def compute_box3d_iou(center_pred,
     return np.array(iou2d_list, dtype=np.float32), \
         np.array(iou3d_list, dtype=np.float32), np.array(
             corners_3d_list, dtype=np.float32)
+
+
+def compute_iou_class(iou3ds, label):
+    iou3d_class = {'road cone': [], 'box': [], 'human': []}
+    for i in range(len(label)):
+        class_num = label[i]
+        iou3d = iou3ds[i]
+        categ = g_class2type[class_num]
+        iou3d_class[categ].append(iou3d)
+    iou3d_class_thres = {'iou3d_roadcone_0.25': len([x for x in iou3d_class['road cone'] if x >= 0.25]) / (len(iou3d_class['road cone']) + 1e-5),
+                         'iou3d_roadcone_0.5': len([x for x in iou3d_class['road cone'] if x >= 0.5]) / (len(iou3d_class['road cone']) + 1e-5),
+                         'iou3d_box_0.25': len([x for x in iou3d_class['box'] if x >= 0.25]) / (len(iou3d_class['box']) + 1e-5),
+                         'iou3d_box_0.5': len([x for x in iou3d_class['box'] if x >= 0.5]) / (len(iou3d_class['box']) + 1e-5),
+                         'iou3d_human_0.25': len([x for x in iou3d_class['human'] if x >= 0.25]) / (len(iou3d_class['human']) + 1e-5),
+                         'iou3d_human_0.5': len([x for x in iou3d_class['human'] if x >= 0.5]) / (len(iou3d_class['human']) + 1e-5),
+                         }
+    return iou3d_class_thres

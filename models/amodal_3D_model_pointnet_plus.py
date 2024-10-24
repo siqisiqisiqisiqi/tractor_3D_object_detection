@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 from utils.model_util_iou_angle_center import PointNetLoss, parse_output_to_tensors, label_to_tensors, TransformerLoss
 from utils.point_cloud_process import point_cloud_process
-from utils.compute_box3d_iou import compute_box3d_iou, calculate_corner
+from utils.compute_box3d_iou import compute_box3d_iou, calculate_corner, compute_iou_class
 from utils.stereo_custom_dataset import StereoCustomDataset
 from pointnet2.pointnet2_modules import PointnetSAModuleVotes
 from pointnet2.pointnet2_utils import furthest_point_sample
@@ -83,86 +83,9 @@ class PointNetEstimationv2(nn.Module):
         bs = pts.size()[0]
 
         pointcloud = pts.permute(0, 2, 1)
-        _, pre_enc_features, _ = self.preencoder(pointcloud)
+        new_xyz, pre_enc_features, _ = self.preencoder(pointcloud)
         global_feat = torch.max(pre_enc_features, 2, keepdim=False)[
             0]  # bs,512
-
-        expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
-        one_hot_embed = F.relu(self.class_fc(expand_one_hot_vec))
-        center_embed = F.relu(self.fcbn_dist(self.dist_fc(stage1_center)))
-        expand_global_feat = torch.cat(
-            [global_feat, one_hot_embed, center_embed], 1)  # bs,518
-        x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
-        x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
-        x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
-        box_pred = self.fc4(x)  # bs,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
-        return box_pred
-
-
-class PointNetEstimation(nn.Module):
-    def __init__(self, n_classes: int = 3, conv_dim: list = [64, 128, 128, 256, 512]):
-        """Model estimate the 3D bounding box
-
-        Parameters
-        ----------
-        n_classes : int, optional
-            Number of the object type, by default 1
-        """
-        # conv_dim = [64, 128, 256, 512, 1024]
-        super(PointNetEstimation, self).__init__()
-        self.conv1 = nn.Conv1d(3, conv_dim[0], 1)
-        self.conv2 = nn.Conv1d(conv_dim[0], conv_dim[1], 1)
-        self.conv3 = nn.Conv1d(conv_dim[1], conv_dim[2], 1)
-        self.conv4 = nn.Conv1d(conv_dim[2], conv_dim[3], 1)
-        self.conv5 = nn.Conv1d(conv_dim[3], conv_dim[4], 1)
-        self.dropout = nn.Dropout(0.2)
-        self.bn1 = nn.BatchNorm1d(conv_dim[0])
-        self.bn2 = nn.BatchNorm1d(conv_dim[1])
-        self.bn3 = nn.BatchNorm1d(conv_dim[2])
-        self.bn4 = nn.BatchNorm1d(conv_dim[3])
-        self.bn5 = nn.BatchNorm1d(conv_dim[4])
-
-        self.n_classes = n_classes
-
-        self.class_fc = nn.Linear(n_classes, 64)
-        self.dist_fc = nn.Linear(3, 64)
-        self.fcbn_dist = nn.BatchNorm1d(64)
-
-        self.fc1 = nn.Linear(conv_dim[4] + 64 + 64, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 64)
-        self.fc4 = nn.Linear(64, 3 + 1 + 1 * 3)  # center, angle, size
-        self.fcbn1 = nn.BatchNorm1d(512)
-        self.fcbn2 = nn.BatchNorm1d(256)
-        self.fcbn3 = nn.BatchNorm1d(64)
-        self.dropout12 = nn.Dropout(0.2)
-        self.dropout13 = nn.Dropout(0.2)
-
-    def forward(self, pts: ndarray, one_hot_vec: ndarray, stage1_center: ndarray) -> tensor:
-        """
-        Parameters
-        ----------
-        pts : ndarray
-            point cloud 
-            size bsx3xnum_point
-        one_hot_vec : ndarray
-            one hot vector type 
-            size bsxn_classes
-
-        Returns
-        -------
-        tensor
-            size 3x3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4
-        """
-        bs = pts.size()[0]
-        n_pts = pts.size()[2]
-
-        out1 = self.dropout(F.relu(self.bn1(self.conv1(pts))))  # bs,128,n
-        out2 = self.dropout(F.relu(self.bn2(self.conv2(out1))))  # bs,128,n
-        out3 = self.dropout(F.relu(self.bn3(self.conv3(out2))))  # bs,256,n
-        out4 = self.dropout(F.relu(self.bn4(self.conv4(out3))))  # bs,512,n
-        out5 = self.dropout(F.relu(self.bn5(self.conv5(out4))))  # bs,512,n
-        global_feat = torch.max(out5, 2, keepdim=False)[0]  # bs,512
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         one_hot_embed = F.relu(self.class_fc(expand_one_hot_vec))
@@ -338,7 +261,6 @@ class Amodal3DModel(nn.Module):
         self.transformer = TransformerBasedFilter()
         self.STN = STNxyz(n_classes=3)
         self.est = PointNetEstimationv2(n_classes=3)
-        # self.est = PointNetEstimation(n_classes=3)
         if hyper_parameter is not None:
             self.Loss = PointNetLoss(hyper_parameter=hyper_parameter)
         else:
@@ -447,6 +369,16 @@ class Amodal3DModel(nn.Module):
                     heading_residual_label.detach().cpu().numpy().squeeze(-1),
                     size_class_label.detach().cpu().numpy().squeeze(-1),
                     size_residual_label.detach().cpu().numpy())
+                label = size_class_label.detach().cpu().numpy().squeeze(-1)
+            iou3d_class = compute_iou_class(iou3ds, label)
+            # metrics = {
+            #     'corners': corners,
+            #     'iou2d': iou2ds.mean(),
+            #     'iou3d': iou3ds.mean(),
+            #     'iou3d_0.25': np.sum(iou3ds >= 0.25) / bs,
+            #     'iou3d_0.5': np.sum(iou3ds >= 0.5) / bs,
+            #     'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs,
+            # }
             metrics = {
                 'corners': corners,
                 'iou2d': iou2ds.mean(),
@@ -454,6 +386,12 @@ class Amodal3DModel(nn.Module):
                 'iou3d_0.25': np.sum(iou3ds >= 0.25) / bs,
                 'iou3d_0.5': np.sum(iou3ds >= 0.5) / bs,
                 'iou3d_0.7': np.sum(iou3ds >= 0.7) / bs,
+                'iou3d_roadcone_0.25': iou3d_class['iou3d_roadcone_0.25'],
+                'iou3d_roadcone_0.5': iou3d_class['iou3d_roadcone_0.5'],
+                'iou3d_box_0.25': iou3d_class['iou3d_box_0.25'],
+                'iou3d_box_0.5': iou3d_class['iou3d_box_0.5'],
+                'iou3d_human_0.25': iou3d_class['iou3d_human_0.25'],
+                'iou3d_human_0.5': iou3d_class['iou3d_human_0.5'],
             }
             return losses, metrics
 

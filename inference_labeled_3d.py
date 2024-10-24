@@ -75,15 +75,6 @@ def visual3d(pc_path, corners):
     vis_core(vis_objs, boxes)
 
 
-# def bbox_obj(points, color=[1, 0, 0]):
-#     colors = [color for i in range(len(LINES))]
-#     line_set = o3d.geometry.LineSet(
-#         points=o3d.utility.Vector3dVector(points),
-#         lines=o3d.utility.Vector2iVector(LINES),
-#     )
-#     line_set.colors = o3d.utility.Vector3dVector(colors)
-#     return line_set
-
 def bbox_obj_mesh(points, color=[1, 0, 0]):
     colors = [color for i in range(len(LINES))]
     line_mesh1 = LineMesh(points, LINES, colors, radius=0.02)

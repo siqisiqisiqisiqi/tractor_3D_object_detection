@@ -224,10 +224,10 @@ def gather_object_pts(pts, mask, n_pts=NUM_OBJECT_POINT):
 
 
 class TransformerLoss(nn.Module):
-    def __init__(self, delta_norm_loss_weight=0.01, center_loss_weight=0.5):
+    def __init__(self, delta_norm_loss_weight, center_loss_weight):
         super(TransformerLoss, self).__init__()
-        self.delta_norm_loss_weight = delta_norm_loss_weight
-        self.center_loss_weight = center_loss_weight
+        self.delta_norm_loss_weight = delta_norm_loss_weight * 0.005
+        self.center_loss_weight = center_loss_weight * 0.5
 
     def forward(self, mask_xyz_mean, point_cloud, x_delta, center_label,
                 size_class_label, size_residual_label,
@@ -315,8 +315,8 @@ class TransformerLoss(nn.Module):
         delta_norm = torch.norm(x_delta, dim=[1, 2])
         delta_norm_loss = self.delta_norm_loss_weight * \
             huber_loss(delta_norm, delta=1.0)
-        total_loss = center_loss + x_std_loss + x_mean_loss + \
-            delta_norm_loss + y_mean_loss + y_std_loss
+        total_loss = center_loss + 0 * x_std_loss + x_mean_loss + \
+            delta_norm_loss + y_mean_loss + 0 * y_std_loss
         return 0.4 * total_loss
 
 
@@ -415,7 +415,8 @@ class PointNetLoss(nn.Module):
             (center - center_label) / mean_size_label, dim=1)
         nomalize_center_loss = huber_loss(normalize_center_dist, delta=2.0)
 
-        normalize_mask_dist = torch.norm((mask_xyz_mean - center_label)/mean_size_label, dim=1)
+        normalize_mask_dist = torch.norm(
+            (mask_xyz_mean - center_label) / mean_size_label, dim=1)
         nomalize_mask_center_loss = huber_loss(normalize_mask_dist, delta=1.0)
 
         # Heading Loss
@@ -484,7 +485,7 @@ class PointNetLoss(nn.Module):
         total_loss = box_loss_weight * (0 * center_loss +
                                         0.04 * nomalize_center_loss +
                                         0 * iou_value_loss +
-                                        mask_center_loss +
+                                        0 * mask_center_loss +
                                         2.0 * size_residual_loss +
                                         0.5 * heading_loss +
                                         stage1_center_loss +

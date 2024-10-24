@@ -21,28 +21,6 @@ from utils.compute_box3d_iou import get_3d_box
 save_path = os.path.join(BASE_DIR, "results")
 
 
-def downsample(pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
-    """downsample the pointcloud
-
-    Parameters
-    ----------
-    pc_in_numpy : ndarray
-        point cloud in adarray
-        size [N, 6]
-    num_object_points : int
-        num of object points desired
-
-    Returns
-    -------
-    ndarray
-        downsampled pointcloud
-    """
-    pc_num = len(pc_in_numpy)
-    idx = np.random.randint(pc_num, size=num_object_points)
-    downsample_pc = pc_in_numpy[idx, :]
-    return downsample_pc
-
-
 def point_cloud_input(image_path):
     a = image_path.split("/")[-1]
     num = re.findall(r'\d+', a)
@@ -100,6 +78,7 @@ def visaulization(img_dir: str, corners: list):
         pt2 = corner2.reshape((-1, 1, 2))
 
         color = colors[index]
+        # color = colors[0]
         thickness = 2
         cv2.polylines(img, [pt1], True, color, thickness)
         cv2.polylines(img, [pt2], True, color, thickness)
@@ -131,14 +110,14 @@ def visaulization(img_dir: str, corners: list):
     return k
 
 
-def main():
+def inference_label_visualize(num):
     # image_path_list = []
     # i = list(range(115))
     # for i in range(115):
     #     image_path = f"{PARENT_DIR}/datasets/images/Image_{i}.jpg"
     #     image_path_list.append(image_path)
     image_path_list = glob.glob(
-        f"{PARENT_DIR}/datasets/images/train/Image_203.jpg")
+        f"{PARENT_DIR}/datasets/images/train/Image_{num}.jpg")
     for data in image_path_list:
         img_path = data
         label_dicts = point_cloud_input(img_path)
@@ -151,4 +130,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    num = 119
+    inference_label_visualize(num)

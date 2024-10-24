@@ -28,7 +28,7 @@ import yaml
 
 
 class PointNetEstimationv2(nn.Module):
-    def __init__(self, n_classes: int = 3, conv_dim: list = [64, 128, 128, 256, 512]):
+    def __init__(self, n_classes: int = 3, conv_dim: list = [64, 128, 128, 256, 256]):
         """Model estimate the 3D bounding box
 
         Parameters
@@ -38,7 +38,7 @@ class PointNetEstimationv2(nn.Module):
         """
         # conv_dim = [64, 128, 256, 512, 1024]
         super(PointNetEstimationv2, self).__init__()
-        preencoder_mpl_dims = [0, 64, 128, 256, 512]
+        preencoder_mpl_dims = [0, 64, 128, 256, 256]
         self.preencoder = PointnetSAModuleVotes(
             radius=0.2,
             nsample=32,
@@ -48,12 +48,15 @@ class PointNetEstimationv2(nn.Module):
         )
 
         self.n_classes = n_classes
+        self.multihead_attn = nn.MultiheadAttention(256, 4, batch_first=True)
 
         self.class_fc = nn.Linear(n_classes, 64)
-        self.dist_fc = nn.Linear(3, 64)
-        self.fcbn_dist = nn.BatchNorm1d(64)
+        self.dist_fc1 = nn.Linear(3, 64)
+        self.dist_fc2 = nn.Linear(64, 256)
+        self.fcbn_dist1 = nn.BatchNorm1d(64)
+        self.fcbn_dist2 = nn.BatchNorm1d(256)
 
-        self.fc1 = nn.Linear(conv_dim[4] + 64 + 64, 512)
+        self.fc1 = nn.Linear(conv_dim[4] + 64, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 64)
         self.fc4 = nn.Linear(64, 3 + 1 + 1 * 3)  # center, angle, size
@@ -82,15 +85,29 @@ class PointNetEstimationv2(nn.Module):
         bs = pts.size()[0]
 
         pointcloud = pts.permute(0, 2, 1).contiguous()
-        _, pre_enc_features, _ = self.preencoder(pointcloud)
-        global_feat = torch.max(pre_enc_features, 2, keepdim=False)[
+        new_xyz, pre_enc_features, _ = self.preencoder(pointcloud)
+
+        # cross attention for 
+        center_embed = F.relu(self.fcbn_dist1(self.dist_fc1(stage1_center)))
+        center_embed = F.relu(self.fcbn_dist2(self.dist_fc2(center_embed)))
+        # center_embed = center_embed.unsqueeze(1).repeat(1,256,1)
+        center_embed = center_embed.unsqueeze(1)
+
+        query = pre_enc_features.permute(0,2,1) # point feature
+        key = center_embed # center
+        value = center_embed # center
+        pre_enc_features, _ = self.multihead_attn(query, key, value)
+
+        global_feat = torch.max(pre_enc_features, 1, keepdim=False)[
             0]  # bs,512
 
         expand_one_hot_vec = one_hot_vec.view(bs, -1)  # bs,3
         one_hot_embed = F.relu(self.class_fc(expand_one_hot_vec))
-        center_embed = F.relu(self.fcbn_dist(self.dist_fc(stage1_center)))
+        # center_embed = F.relu(self.fcbn_dist(self.dist_fc(stage1_center)))
+        # expand_global_feat = torch.cat(
+        #     [global_feat, one_hot_embed, center_embed], 1)  # bs,518
         expand_global_feat = torch.cat(
-            [global_feat, one_hot_embed, center_embed], 1)  # bs,518
+            [global_feat, one_hot_embed], 1)
         x = F.relu(self.fcbn1(self.fc1(expand_global_feat)))  # bs,512
         x = self.dropout12(F.relu(self.fcbn2(self.fc2(x))))  # bs,256
         x = self.dropout13(F.relu(self.fcbn3(self.fc3(x))))
@@ -286,7 +303,7 @@ def huber_loss(error, delta=1.0):  # (32,), ()
 
 
 class Amodal3DModel(nn.Module):
-    def __init__(self, n_classes: int = 3, n_channel: int = 3, hyper_parameter=None):
+    def __init__(self, n_classes: int = 3, n_channel: int = 3, hyper_parameter=[1, 1, 1]):
         """amodal 3D estimation model 
 
         Parameters
@@ -299,8 +316,8 @@ class Amodal3DModel(nn.Module):
         super(Amodal3DModel, self).__init__()
         self.n_classes = n_classes
         self.n_channel = n_channel
-        self.transformer = TransformerBasedFilter(
-            "./config/PointTransformer.yaml")
+        # self.transformer = TransformerBasedFilter(
+        #     "./config/PointTransformer.yaml")
         self.STN = STNxyz(n_classes=3)
         self.est = PointNetEstimationv2(n_classes=3)
         # self.est = PointNetEstimation(n_classes=3)
@@ -308,7 +325,8 @@ class Amodal3DModel(nn.Module):
             self.Loss = PointNetLoss(hyper_parameter=hyper_parameter)
         else:
             self.Loss = PointNetLoss()
-        self.transformer_loss = TransformerLoss()
+        self.transformer_loss = TransformerLoss(
+            hyper_parameter[1], hyper_parameter[2])
 
     def forward(self, features: ndarray, one_hot: ndarray, label_dicts: dict = {}):
         """Amodal3DModel forward
@@ -343,8 +361,8 @@ class Amodal3DModel(nn.Module):
         # object_pts_xyz size (batchsize, 3, number object point)
         object_pts_xyz, mask_xyz_mean = point_cloud_process(point_cloud)
 
-        object_pts_xyz, mask_xyz_mean, pc_delta = self.transformer(
-            object_pts_xyz, one_hot, mask_xyz_mean)
+        # object_pts_xyz, mask_xyz_mean, pc_delta = self.transformer(
+        #     object_pts_xyz, one_hot, mask_xyz_mean)
 
         # T-net
         center_delta = self.STN(object_pts_xyz, one_hot)  # (32,3)
@@ -393,10 +411,10 @@ class Amodal3DModel(nn.Module):
             #                                         size_class_label, size_residual_label,
             #                                         heading_class_label, heading_residual_label)
 
-            delta_norm = torch.norm(pc_delta, dim=[1, 2])
-            delta_norm_loss = 0.05 * huber_loss(delta_norm, delta=1.0)
-            transformerloss = delta_norm_loss
-            # transformerloss = torch.tensor(0)
+            # delta_norm = torch.norm(pc_delta, dim=[1, 2])
+            # delta_norm_loss = 0.05 * huber_loss(delta_norm, delta=1.0)
+            # transformerloss = delta_norm_loss
+            transformerloss = torch.tensor(0)
 
             losses = self.Loss(box3d_center, box3d_center_label, stage1_center,
                                heading_residual_normalized,
