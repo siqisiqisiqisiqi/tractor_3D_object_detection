@@ -5,6 +5,7 @@ import json
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
+PARENT_DIR = "/home/grail/camera/processed_data/10_24"
 sys.path.append(BASE_DIR)
 
 import torch
@@ -49,7 +50,7 @@ def downsample(pc_in_numpy: ndarray, num_object_points: int) -> ndarray:
 def labeled_input(image_path):
     a = image_path.split("/")[-1]
     num = re.findall(r'\d+', a)
-    label_dir = f'../datasets/labels/train/Pointcloud{num[0]}.json'
+    label_dir = f'{PARENT_DIR}/datasets/labels/train/Pointcloud{num[0]}.json'
     with open(label_dir) as f:
         d = json.load(f)
     label_dicts = d['objects']
@@ -99,7 +100,7 @@ def point_cloud_class(pt_path_list):
     return one_hot
 
 
-def visaulization(img: ndarray, corners: list, label=False):
+def visaulization(img: ndarray, corners: list, categ, label=False):
     """Draw the 3D bounding box in the 2D image
 
     Parameters
@@ -111,11 +112,13 @@ def visaulization(img: ndarray, corners: list, label=False):
         Size batchsize x 8 x 3
     """
     # load the camera parameters
-    with np.load('./camera_params/camera_param.npz') as X:
+    with np.load('./camera_params/camera_param_farm.npz') as X:
         mtx, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
+    with np.load('./camera_params/camera_param.npz') as X:
+        _, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
     if label:
-        # colors = [(190, 190, 190)]
-        colors = [(50, 50, 50)]
+        # colors = [(0, 50, 50)]
+        colors = [(0, 255, 255)]
     else:
         colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255),
                   (0, 255, 255), (255, 0, 255), (125, 125, 0)]
@@ -130,8 +133,10 @@ def visaulization(img: ndarray, corners: list, label=False):
         corner2 = corner[4:8, :]
         pt1 = corner1.reshape((-1, 1, 2))
         pt2 = corner2.reshape((-1, 1, 2))
-
-        color = colors[index % len(colors)]
+        if label:
+            color = colors[index % len(colors)]
+        else:
+            color = colors[categ[index]]
         thickness = 2
         cv2.polylines(img, [pt1], True, color, thickness)
         cv2.polylines(img, [pt2], True, color, thickness)
@@ -181,7 +186,7 @@ def main():
     model.eval()
 
     image_path_list = glob.glob(
-        f"{PARENT_DIR}/datasets/images/train/Image_203*")
+        f"{PARENT_DIR}/datasets/images/train/Image_1*")
     # image_path_list = glob.glob(
     #     f"{PARENT_DIR}/datasets/images/test/Image_*")
 
@@ -196,6 +201,7 @@ def main():
         features = point_cloud_input(point_cloud_path_list)
         features = features.to(device, dtype=torch.float)
         categ = categ.to(device, dtype=torch.float)
+
         with torch.no_grad():
             tik = time.time()
             corners = model(features, categ)
@@ -204,12 +210,16 @@ def main():
             t_total += inference_time
             print(f"inference time is {inference_time}")
 
+        categ_numpy_onehot = categ.detach().cpu().numpy()
+        categ_numpy = np.argmax(categ_numpy_onehot, axis = 1)
+
         img = cv2.imread(img_path)
-        img = visaulization(img, corners)
+        img = visaulization(img, corners, categ_numpy)
 
         label_dicts = labeled_input(img_path)
         label_corners = label2corners(label_dicts)
-        img = visaulization(img, label_corners, True)
+
+        img = visaulization(img, label_corners, categ_numpy, True)
 
         cv2.imshow("Image", img)
         k = cv2.waitKey(0)

@@ -4,6 +4,7 @@ import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
+# PARENT_DIR = "/home/grail/camera/processed_data/10_24"
 sys.path.append(BASE_DIR)
 
 import open3d as o3d
@@ -58,7 +59,7 @@ def downsample(pc_in_numpy, num_object_points):
 def point_cloud_input(path):
     a = path.split("/")[-1]
     num = re.findall(r'\d+', a)
-    label_dir = f'../datasets/labels/train/Pointcloud{num[0]}.json'
+    label_dir = f'{PARENT_DIR}/datasets/labels/train/Pointcloud{num[0]}.json'
     with open(label_dir) as f:
         d = json.load(f)
     label_dicts = d['objects']
@@ -80,9 +81,11 @@ def label2corners(label_dicts):
     return corners
 
 
-def visual3d(pc_path, corners_labeled, corners):
-    colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1),
-              (0, 1, 1), (1, 0, 1), (0.5, 0.5, 0)]
+def visual3d(pc_path, corners_labeled, corners, categ):
+    # colors = [(1, 0, 0), (0, 1, 0), (0, 0, 1),
+    #           (0, 1, 1), (1, 0, 1), (0.5, 0.5, 0)]
+    colors = [(0, 0, 1), (0, 1, 0), (1, 0, 0),
+            (1, 1, 0), (1, 0, 1), (0, 0.5, 0.5)]
     # mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
     #     size=1, origin=[0, 0, 0])
     mesh = o3d.io.read_point_cloud(pc_path)
@@ -90,11 +93,12 @@ def visual3d(pc_path, corners_labeled, corners):
     boxes = []
     vis_objs = [mesh]
     for i, corner in enumerate(corners):
-        color = colors[i % len(colors)]
+        # color = colors[i % len(colors)]
+        color = colors[categ[i]]
         boxes.append(bbox_obj_mesh(corner, color=color))
 
     for i, corner in enumerate(corners_labeled):
-        color = (0,0,0)
+        color = (1,1,0)
         boxes.append(bbox_obj_mesh(corner, color=color))
     # o3d.visualization.draw_geometries([mesh, boxes[0][0]])
     vis_core(vis_objs, boxes)
@@ -190,7 +194,10 @@ def main():
         with torch.no_grad():
             corners = model(features, categ)
 
-        k = visual3d(pc_path, labeled_corners, corners)
+        categ_numpy_onehot = categ.detach().cpu().numpy()
+        categ_numpy = np.argmax(categ_numpy_onehot, axis = 1)
+
+        k = visual3d(pc_path, labeled_corners, corners, categ_numpy)
     print("Completed the inference!")
 
 
