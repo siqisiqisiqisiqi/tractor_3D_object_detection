@@ -197,7 +197,7 @@ def main():
         categ_numpy_onehot = categ.detach().cpu().numpy()
         categ_numpy = np.argmax(categ_numpy_onehot, axis = 1)
 
-        k = visual3d(pc_path, labeled_corners, corners, categ_numpy)
+        visual3d(pc_path, labeled_corners, corners, categ_numpy)
     print("Completed the inference!")
 
 

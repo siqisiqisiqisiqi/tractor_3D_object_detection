@@ -5,7 +5,7 @@ import json
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
-PARENT_DIR = "/home/grail/camera/processed_data/10_24"
+# PARENT_DIR = "/home/grail/camera/processed_data/10_24"
 sys.path.append(BASE_DIR)
 
 import torch
@@ -112,10 +112,10 @@ def visaulization(img: ndarray, corners: list, categ, label=False):
         Size batchsize x 8 x 3
     """
     # load the camera parameters
-    with np.load('./camera_params/camera_param_farm.npz') as X:
-        mtx, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
+    # with np.load('./camera_params/camera_param_farm.npz') as X:
+    #     mtx, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
     with np.load('./camera_params/camera_param.npz') as X:
-        _, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
+        mtx, Mat, tvecs = [X[i] for i in ('mtx', 'Mat', 'tvecs')]
     if label:
         # colors = [(0, 50, 50)]
         colors = [(0, 255, 255)]
